@@ -292,6 +292,7 @@ NTSTATUS getAssets() {
 
 NTSTATUS DriverEntryCustom() {
 	// Delay
+	int alpha = 0;
 	ReadTextFile();
 	SleepInKernelMode(5000);
 	ReadStructFromProcess();
