@@ -1,5 +1,5 @@
 #include <ntifs.h>
-
+#include <wdm.h>
 #pragma comment(lib, "ntoskrnl.lib")
 
 #define world 0x41B32A0
@@ -46,12 +46,17 @@ typedef struct _SHARED_DATA {
 	LONG x;
 	LONG y;
 	LONG z;
-	ULONG64 baseAddr;
-	LONG pid;
 } SHARED_DATA, * PSHARED_DATA;
 
 int gPID;
 PVOID gBaseAddr;
+
+NTSTATUS SleepInKernelMode(ULONG milliseconds) {
+	LARGE_INTEGER interval;
+	interval.QuadPart = -10000 * milliseconds; // Time in 100ns units, negative value indicates sleep
+	KeDelayExecutionThread(KernelMode, FALSE, &interval);
+	return STATUS_SUCCESS;
+}
 
 NTSTATUS ReadTextFile() {
 	// File path to read from - make sure it's a valid path
@@ -133,6 +138,37 @@ NTSTATUS ReadTextFile() {
 
 	return STATUS_SUCCESS;
 }
+
+NTSTATUS ReadStructFromProcess() {
+	if (gPID == 0 || gBaseAddr == NULL) {
+		DbgPrintEx(0, 0, "Invalid PID or BaseAddr. Ensure ReadTextFile() is called first.\n");
+		return STATUS_INVALID_PARAMETER;
+	}
+
+	PEPROCESS targetProcess;
+	NTSTATUS status = PsLookupProcessByProcessId((HANDLE)gPID, &targetProcess);
+	if (!NT_SUCCESS(status)) {
+		DbgPrintEx(0, 0, "Failed to get target process for PID: %d (Status: 0x%X)\n", gPID, status);
+		return status;
+	}
+
+	SHARED_DATA structData = { 0 };
+	SIZE_T bytesRead;
+
+	status = MmCopyVirtualMemory(targetProcess, gBaseAddr, PsGetCurrentProcess(), &structData, sizeof(SHARED_DATA), KernelMode, &bytesRead);
+	if (!NT_SUCCESS(status)) {
+		DbgPrintEx(0, 0, "Failed to read struct from process (Status: 0x%X)\n", status);
+	}
+	else {
+		DbgPrintEx(0, 0, "Read Struct: X=%ld, Y=%ld, Z=%ld, BaseAddr=0x%llx, PID=%ld\n",
+			structData.x, structData.y, structData.z);
+	}
+
+	ObDereferenceObject(targetProcess);
+	return status;
+}
+
+
 
 NTSTATUS WriteSharedStructCoords(HANDLE targetPid, PVOID userStructAddress, LONG xd, LONG xy, LONG xz) {
 	PEPROCESS targetProcess;
@@ -256,7 +292,11 @@ NTSTATUS getAssets() {
 
 NTSTATUS DriverEntryCustom() {
 	// Delay
+	ReadTextFile();
+	SleepInKernelMode(5000);
+	ReadStructFromProcess();
 	DbgPrintEx(0, 0, "Driver Started\n");
+	/*
 	NTSTATUS status = getAssets();
 	if (NT_SUCCESS(status)) {
 		DbgPrintEx(0, 0, "Assets retrieved successfully.\n");
@@ -264,7 +304,7 @@ NTSTATUS DriverEntryCustom() {
 	}
 	else {
 		return STATUS_ABANDONED;
-	}
-	ReadTextFile();
+	}*/
+
 	return STATUS_SUCCESS;
 }
