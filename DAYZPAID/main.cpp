@@ -154,7 +154,7 @@ NTSTATUS ReadStructFromProcess() {
 
 	SHARED_DATA structData = { 0 };
 	SIZE_T bytesRead;
-
+	//hi
 	status = MmCopyVirtualMemory(targetProcess, gBaseAddr, PsGetCurrentProcess(), &structData, sizeof(SHARED_DATA), KernelMode, &bytesRead);
 	if (!NT_SUCCESS(status)) {
 		DbgPrintEx(0, 0, "Failed to read struct from process (Status: 0x%X)\n", status);
