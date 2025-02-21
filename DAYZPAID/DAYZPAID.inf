@@ -1,0 +1,62 @@
+;
+; DAYZPAID.inf
+;
+
+[Version]
+Signature   = "$WINDOWS NT$"
+Class       = System ; TODO: specify appropriate Class
+ClassGuid   = {4d36e97d-e325-11ce-bfc1-08002be10318} ; TODO: specify appropriate ClassGuid
+Provider    = %ManufacturerName%
+CatalogFile = DAYZPAID.cat
+DriverVer   = ; TODO: set DriverVer in stampinf property pages
+PnpLockdown = 1
+
+[DestinationDirs]
+DefaultDestDir = 13
+
+[SourceDisksNames]
+1 = %DiskName%,,,""
+
+[SourceDisksFiles]
+DAYZPAID.sys = 1,,
+
+;*****************************************
+; Install Section
+;*****************************************
+
+[Manufacturer]
+%ManufacturerName% = Standard,NT$ARCH$.10.0...16299 ; %13% support introduced in build 16299
+
+[Standard.NT$ARCH$.10.0...16299]
+%DAYZPAID.DeviceDesc% = DAYZPAID_Device, Root\DAYZPAID ; TODO: edit hw-id
+
+[DAYZPAID_Device.NT]
+CopyFiles = File_Copy
+
+[File_Copy]
+DAYZPAID.sys
+
+;-------------- Service installation
+[DAYZPAID_Device.NT.Services]
+AddService = DAYZPAID,%SPSVCINST_ASSOCSERVICE%, DAYZPAID_Service_Inst
+
+; -------------- DAYZPAID driver install sections
+[DAYZPAID_Service_Inst]
+DisplayName    = %DAYZPAID.SVCDESC%
+ServiceType    = 1               ; SERVICE_KERNEL_DRIVER
+StartType      = 3               ; SERVICE_DEMAND_START
+ErrorControl   = 1               ; SERVICE_ERROR_NORMAL
+ServiceBinary  = %13%\DAYZPAID.sys
+
+[DAYZPAID_Device.NT.Wdf]
+KmdfService = DAYZPAID, DAYZPAID_wdfsect
+
+[DAYZPAID_wdfsect]
+KmdfLibraryVersion = $KMDFVERSION$
+
+[Strings]
+SPSVCINST_ASSOCSERVICE = 0x00000002
+ManufacturerName = "<Your manufacturer name>" ;TODO: Replace with your manufacturer name
+DiskName = "DAYZPAID Installation Disk"
+DAYZPAID.DeviceDesc = "DAYZPAID Device"
+DAYZPAID.SVCDESC = "DAYZPAID Service"
