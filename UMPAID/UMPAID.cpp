@@ -142,7 +142,7 @@ DWORD GetProcessIdByName(const wchar_t* processName) {
     CloseHandle(hSnapshot);
     return 0;
 }
-
+/*
 ULONG64 GetBaseAddress(DWORD pid) {
     HANDLE hSnapshot = CreateToolhelp32Snapshot(TH32CS_SNAPMODULE | TH32CS_SNAPMODULE32, pid);
     if (hSnapshot == INVALID_HANDLE_VALUE)
@@ -158,7 +158,7 @@ ULONG64 GetBaseAddress(DWORD pid) {
 
     CloseHandle(hSnapshot);
     return 0;
-}
+}*/
 
 int main() {
     const char* filename = "C:\\Users\\proxi\\source\\logfile.txt";
