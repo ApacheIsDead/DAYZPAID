@@ -4,8 +4,9 @@
 #pragma comment(lib, "ntoskrnl.lib")
 
 #define world 0x41CFB68
-#define localplayer 0x2968
+#define localplayer 0x2960
 #define gameBase 0x7ff6d3a90000
+
 extern "C" {
 	PVOID PsGetProcessSectionBaseAddress(PEPROCESS Process);
 }
@@ -136,19 +137,28 @@ NTSTATUS getAssetsRadar() {
 	DbgPrintEx(0, 0, "%llx", (uintptr_t)gBaseAddrDayZ); 
 	uintptr_t worldPointerAddress = (uintptr_t)gBaseAddrDayZ + world; // Game base address + world offset - here
 	uintptr_t worldPointerValue = 0;
+	uintptr_t localPlayerPtr = 0;
+	// get handle
 	NTSTATUS status = PsLookupProcessByProcessId((HANDLE)gPIDDayZ, &targetProcess); // DayZ PID here
 	if (!NT_SUCCESS(status)) {
 		DbgPrintEx(0, 0, "Failed to get target process\n");
 		return status;
 	}
-
+	// world pointer
 	status = ReadPointer(targetProcess, worldPointerAddress, &worldPointerValue);
 	if (!NT_SUCCESS(status)) {
 		DbgPrintEx(0, 0, "Failed to read world pointer (Status: 0x%X)\n", status);
 		ObDereferenceObject(targetProcess);
 		return status;
 	}
-
+	// local player
+	status = ReadPointer(targetProcess, worldPointerAddress + localplayer, &localPlayerPtr);
+	if (!NT_SUCCESS(status)) {
+		DbgPrintEx(0, 0, "Failed to read local player pointer (Status: 0x%X)\n", status);
+		ObDereferenceObject(targetProcess);
+		return status;
+	}
+	// etity size
 	INT32 entityCount = 0;
 	status = ReadMemory(targetProcess, worldPointerValue + 0xF50, &entityCount, sizeof(entityCount));
 	if (!NT_SUCCESS(status)) {
@@ -235,7 +245,6 @@ NTSTATUS SetPosition(uintptr_t Entity, char* positionData, HANDLE ProcessId)
 	return status;
 }
 
-
 NTSTATUS TelportCheat(uintptr_t entityPtr)
 {
 	if (gPIDDayZ == 0) {
@@ -269,7 +278,6 @@ NTSTATUS TelportCheat(uintptr_t entityPtr)
 	status = SetPosition(entityPtr, positionData, (HANDLE)gPID);
 	return status;
 }
-
 
 NTSTATUS ReadFromTextFile2() {
 	// File path to read from - make sure it's a valid path
@@ -417,7 +425,7 @@ NTSTATUS ReadFromTextFile() {
 	return STATUS_SUCCESS;
 }
 
-void memeHexConversion(char* baseAddrStr, PVOID& output) {
+static void memeHexConversion(char* baseAddrStr, PVOID& output) {
 	// For BaseAddr - manual hex conversion
 	ULONG_PTR addr = 0;
 	char* p = baseAddrStr;
@@ -502,7 +510,7 @@ NTSTATUS ReadStructFromProcess() {
 			}
 		}// without battle-eye: run um process -> write its shit into logging file -> launch dayz -> get its base addr and process -> change that in the driver -> map driver with UM process open -> um process maps entities
 
-	// um just needs to start, write its info to file, load dayz,gt its info into file, set status to 1, render cords
+	// um just needs to start, write its info to file, load dayz, gt its info into file, set status to 1, render cords
 	}
 	// read from one of these as a status value, and if it changes to 1 then grab base addr from struct or file (1 means game is launched now) - !MAKE SURE TO BREAK FROM LOOP^^^
 	ObDereferenceObject(targetProcess);
@@ -510,6 +518,7 @@ NTSTATUS ReadStructFromProcess() {
 }
 
 NTSTATUS DriverEntryCustom() {
+
 	// Delay
 	ReadFromTextFile();
 	ReadStructFromProcess();
