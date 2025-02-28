@@ -178,9 +178,8 @@ int main() {
     while (1) {
         DWORD dayzPid = GetProcessIdByName(L"DayZ_x64.exe");
         if (dayzPid) {
-            ULONG64 dayzBaseAddr = GetBaseAddress(dayzPid);
-            printf("DayZ launched! PID: %lu, Base Addr: 0x%llx\n", dayzPid, dayzBaseAddr);
-            WriteProcessInfoToFile(filename, dayzPid, dayzBaseAddr);
+            printf("DayZ launched! PID: %lu\n", dayzPid);
+            WriteProcessInfoToFile(filename, dayzPid, 0x123456678);
             // Set status to 1
             break;
         }
