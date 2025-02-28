@@ -155,7 +155,7 @@ NTSTATUS getAssetsRadar() {
 		ObDereferenceObject(targetProcess);
 		return status;
 	}
-
+	
 	while (entityCount > 0) {
 		for (size_t i = 0; i < entityCount; i++) {
 			uintptr_t entityEntryAddress = entityListPointerValue + i * sizeof(uintptr_t);
@@ -174,6 +174,7 @@ NTSTATUS getAssetsRadar() {
 			if (!NT_SUCCESS(status) || visualStatePtr == 0) {
 				continue;
 			}
+
 			LARGE_INTEGER interval;
 			interval.QuadPart = -10000 * 100; // Time in 100ns units, negative value indicates sleep
 			KeDelayExecutionThread(KernelMode, FALSE, &interval);
@@ -199,6 +200,7 @@ NTSTATUS getAssetsRadar() {
 	return STATUS_SUCCESS;
 }
 
+
 // Needs testing
 NTSTATUS SetPosition(uintptr_t Entity, char* positionData, HANDLE ProcessId)
 {
@@ -221,6 +223,7 @@ NTSTATUS SetPosition(uintptr_t Entity, char* positionData, HANDLE ProcessId)
 
 	return status;
 }
+
 
 NTSTATUS TelportCheat(uintptr_t entityPtr)
 {

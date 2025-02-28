@@ -3,7 +3,6 @@
 #include <tlhelp32.h>
 #include <stdbool.h>
 
-#include <windows.h>
 #include <commdlg.h>
 
 
@@ -100,16 +99,6 @@ namespace gui {
     }
 }
 
-
-
-
-
-
-
-
-
-
-
 #define MAPPER_COMMAND "kdmapper driver.sys"
 
 typedef struct _SHARED_DATA {
@@ -193,15 +182,15 @@ int main() {
         }
         Sleep(1000);
     }
+
     g_SharedData.y = 1;
     printf("Game detected. Status updated. Monitoring...\n");
     while (1) {
         printf("x: %d, y: %d, z: %d, buffer: 0x%llx\n", g_SharedData.x, g_SharedData.y, g_SharedData.z, g_SharedData.buffer);
         Sleep(25);
         // render coords on mini map and check for previous cords -> communicate with a overlay etc
-
+        
     }
-
     return 0;
 }
 
