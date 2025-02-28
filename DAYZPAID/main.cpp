@@ -1,8 +1,9 @@
 #include <ntifs.h>
 #include <wdm.h>
+
 #pragma comment(lib, "ntoskrnl.lib")
 
-#define world 0x41B32A0
+#define world 0x41CFB68
 #define localplayer 0x2968
 #define gameBase 0x7ff6d3a90000
 
@@ -30,6 +31,27 @@ extern "C" {
 	);
 }
 
+NTSTATUS WriteMemory(
+	PEPROCESS targetProcess,
+	PVOID targetAddress,
+	PVOID buffer,
+	SIZE_T size
+) {
+	SIZE_T bytesWritten;
+	NTSTATUS status = MmCopyVirtualMemory(
+		PsGetCurrentProcess(),     // Source process (current process)
+		buffer,                    // Buffer to write from
+		targetProcess,             // Target process
+		targetAddress,             // Target address to write to
+		size,                      // Size of the memory to write
+		KernelMode,                // Access mode
+		&bytesWritten              // Number of bytes written
+	);
+
+	return status;
+}
+
+
 typedef struct _VECTOR3_RAW {
 	ULONG x;
 	ULONG y;
@@ -52,13 +74,6 @@ int gPID;
 PVOID gBaseAddr;
 int gPIDDayZ;
 PVOID gBaseAddrDayZ;
-
-NTSTATUS SleepInKernelMode(ULONG milliseconds) {
-	LARGE_INTEGER interval;
-	interval.QuadPart = -10000 * milliseconds; // Time in 100ns units, negative value indicates sleep
-	KeDelayExecutionThread(KernelMode, FALSE, &interval);
-	return STATUS_SUCCESS;
-}
 
 NTSTATUS ReadPointer(PEPROCESS targetProcess, uintptr_t address, uintptr_t* outValue) {
 	SIZE_T bytesRead;
@@ -94,6 +109,7 @@ NTSTATUS WriteSharedStructCoords(HANDLE targetPid, PVOID userStructAddress, LONG
 		ObDereferenceObject(targetProcess);
 		return status;
 	}
+
 	// Modify values
 	localCopy.x = xd;
 	localCopy.y = xy;
@@ -106,7 +122,8 @@ NTSTATUS WriteSharedStructCoords(HANDLE targetPid, PVOID userStructAddress, LONG
 
 NTSTATUS getAssetsRadar() {
 	PEPROCESS targetProcess;        //(uintptr_t)gBaseAddrDayZ
-	uintptr_t worldPointerAddress = gameBase + world; // Game base address + world offset - here
+	DbgPrintEx(0, 0, "%llx", (uintptr_t)gBaseAddrDayZ); 
+	uintptr_t worldPointerAddress = (uintptr_t)gBaseAddrDayZ + world; // Game base address + world offset - here
 	uintptr_t worldPointerValue = 0;
 	NTSTATUS status = PsLookupProcessByProcessId((HANDLE)gPIDDayZ, &targetProcess); // DayZ PID here
 	if (!NT_SUCCESS(status)) {
@@ -147,7 +164,7 @@ NTSTATUS getAssetsRadar() {
 			if (!NT_SUCCESS(status) || entityPtr == 0) {
 				continue;
 			}
-			
+
 			// see if its a zombie
 			// variable to distuingish if client wants zombies rendered
 
@@ -157,7 +174,9 @@ NTSTATUS getAssetsRadar() {
 			if (!NT_SUCCESS(status) || visualStatePtr == 0) {
 				continue;
 			}
-
+			LARGE_INTEGER interval;
+			interval.QuadPart = -10000 * 100; // Time in 100ns units, negative value indicates sleep
+			KeDelayExecutionThread(KernelMode, FALSE, &interval);
 			// Read cords into regular vector 3 LONG struct aswell
 			VECTOR3 rawCords;
 			status = ReadMemory(targetProcess, visualStatePtr + 0x2C, &rawCords, sizeof(rawCords));
@@ -179,6 +198,64 @@ NTSTATUS getAssetsRadar() {
 	ObDereferenceObject(targetProcess);
 	return STATUS_SUCCESS;
 }
+
+// Needs testing
+NTSTATUS SetPosition(uintptr_t Entity, char* positionData, HANDLE ProcessId)
+{
+	PEPROCESS Process;
+	NTSTATUS status;
+	SIZE_T bytes;
+
+	// Look up the process by its ID
+	status = PsLookupProcessByProcessId(ProcessId, &Process);
+	if (!NT_SUCCESS(status)) {
+		return status;
+	}
+
+	// Write the 12 bytes of position data to the entity's memory at offset 0x1D0 + 0x2C
+	status = MmCopyVirtualMemory(PsGetCurrentProcess(), positionData, Process,
+		(PVOID)(Entity + 0x1D0 + 0x2C), 12, KernelMode, &bytes);
+
+	// Clean up the process object reference
+	ObDereferenceObject(Process);
+
+	return status;
+}
+
+NTSTATUS TelportCheat(uintptr_t entityPtr)
+{
+	if (gPIDDayZ == 0) {
+		DbgPrintEx(0, 0, "Invalid PID or BaseAddr. Ensure ReadTextFile() is called first.\n");
+		return STATUS_INVALID_PARAMETER;
+	}
+
+	PEPROCESS targetProcess;
+	NTSTATUS status = PsLookupProcessByProcessId((HANDLE)gPID, &targetProcess);
+	if (!NT_SUCCESS(status)) {
+		DbgPrintEx(0, 0, "Failed to get target process for PID: %d (Status: 0x%X)\n", gPID, status);
+		return status;
+	}
+
+	// Buffer for position data (3 floats = 12 bytes)
+	char positionData[12] = { 0 };
+	SIZE_T bytesRead;
+
+	// Read position data from the target process
+	status = MmCopyVirtualMemory(targetProcess, gBaseAddr, PsGetCurrentProcess(),
+		positionData, sizeof(positionData), KernelMode, &bytesRead);
+	if (!NT_SUCCESS(status)) {
+		DbgPrintEx(0, 0, "Failed to read position data from the process for teleportation\n");
+		return STATUS_ABANDONED;
+	}
+
+	// Debug output to confirm successful read
+	DbgPrintEx(0, 0, "Position data read successfully, BytesRead=%zu\n", bytesRead);
+
+	// Set the entity's position using the raw byte data
+	status = SetPosition(entityPtr, positionData, (HANDLE)gPID);
+	return status;
+}
+
 
 NTSTATUS ReadFromTextFile2() {
 	// File path to read from - make sure it's a valid path
@@ -252,7 +329,7 @@ NTSTATUS ReadFromTextFile2() {
 		}
 		gBaseAddrDayZ = (PVOID)addr;
 
-		DbgPrintEx(0, 0, "[ReadTextFile] PID DayZ: %i\n", gPIDDayZ);   
+		DbgPrintEx(0, 0, "[ReadTextFile] PID DayZ: %i\n", gPIDDayZ);
 		DbgPrintEx(0, 0, "[ReadTextFile] BaseAddr DayZ: %llx\n", gBaseAddrDayZ);
 	}
 
@@ -317,7 +394,6 @@ NTSTATUS ReadFromTextFile() {
 			ZwClose(fileHandle);
 			return status;
 		}
-
 		// For BaseAddr - manual hex conversion
 		ULONG_PTR addr = 0;
 		char* p = baseAddrStr;
@@ -375,7 +451,7 @@ NTSTATUS ReadStructFromProcess() {
 		return status;
 	}
 
-	SHARED_DATA structData = { 0 };
+	SHARED_DATA structData = { 0, 0, 0 };
 	SIZE_T bytesRead;
 	//hi
 	status = MmCopyVirtualMemory(targetProcess, gBaseAddr, PsGetCurrentProcess(), &structData, sizeof(SHARED_DATA), KernelMode, &bytesRead);
@@ -385,24 +461,34 @@ NTSTATUS ReadStructFromProcess() {
 	else {
 		DbgPrintEx(0, 0, "Read Struct: X=%ld, Y=%ld, Z=%ld, BaseAddr=0x%llx, PID=%ld\n",
 			structData.x, structData.y, structData.z);
+		int x = 0;  // Declare x outside the loop
+		while (true) {
+			status = MmCopyVirtualMemory(targetProcess, gBaseAddr, PsGetCurrentProcess(), &structData, sizeof(SHARED_DATA), KernelMode, &bytesRead);
+			if (!NT_SUCCESS(status)) {
+				DbgPrintEx(0, 0, "Failed to read struct from process (Status: 0x%X)\n", status);
+			}
+			// delete logic and add a sleep in UM start the program, map the driver, driver reads from struct and sleep, press enter once dayz started, driver reads dayz, boom
+			DbgPrintEx(0, 0, "%lld", structData.y); // this is slightly broken, appears as 0 doesnt detect game
+			if (structData.y == 1 && x < 2) { //  means game has started, and esp is the selected cheat
+				LARGE_INTEGER interval;
+				interval.QuadPart = -10000 * 10000; // Time in 100ns units, negative value indicates sleep
+				KeDelayExecutionThread(KernelMode, FALSE, &interval);
+				DbgPrintEx(0, 0, "Game Started!");
+				x = 3; // Prevent re-entering
+				// ************************************* RETRIEVE GLOBAL BASE ADDRESS VALUES HERE, FROM FILE OR STRUCT 
+				ReadFromTextFile2(); // gets dayz base address
+				status = getAssetsRadar(); // gets radar
+				break; // Ensure this loop exits
+			}
+			else if (structData.y == 0) {
+				LARGE_INTEGER interval;
+				interval.QuadPart = -10000 * 10000; // Time in 100ns units, negative value indicates sleep
+				KeDelayExecutionThread(KernelMode, FALSE, &interval);
+				DbgPrintEx(0, 0, "Game not started yet");
+			}
+		}// without battle-eye: run um process -> write its shit into logging file -> launch dayz -> get its base addr and process -> change that in the driver -> map driver with UM process open -> um process maps entities
 
-			int x = 0;  // Declare x outside the loop
-			while (true) {
-				SleepInKernelMode(10000);
-				if (structData.y == 1 && x < 2) { //  means game has started, and esp is the selected cheat
-					DbgPrintEx(0, 0, "Game Started!");
-					x = 3; // Prevent re-entering
-					// ************************************* RETRIEVE GLOBAL BASE ADDRESS VALUES HERE, FROM FILE OR STRUCT 
-					ReadFromTextFile2(); // gets dayz base address
-					status = getAssetsRadar(); // gets radar
-					break; // Ensure this loop exits
-				}
-				else if (structData.y == 0) {
-					DbgPrintEx(0, 0, "Game not started yet");
-				}
-			}// without battle-eye: run um process -> write its shit into logging file -> launch dayz -> get its base addr and process -> change that in the driver -> map driver with UM process open -> um process maps entities
-		
-		// um just needs to start, write its info to file, load dayz,gt its info into file, set status to 1, render cords
+	// um just needs to start, write its info to file, load dayz,gt its info into file, set status to 1, render cords
 	}
 	// read from one of these as a status value, and if it changes to 1 then grab base addr from struct or file (1 means game is launched now) - !MAKE SURE TO BREAK FROM LOOP^^^
 	ObDereferenceObject(targetProcess);
@@ -412,7 +498,6 @@ NTSTATUS ReadStructFromProcess() {
 NTSTATUS DriverEntryCustom() {
 	// Delay
 	ReadFromTextFile();
-	SleepInKernelMode(5000);
 	ReadStructFromProcess();
 	DbgPrintEx(0, 0, "Driver Started\n");
 	/*
