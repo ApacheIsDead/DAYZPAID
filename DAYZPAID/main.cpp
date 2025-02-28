@@ -6,7 +6,9 @@
 #define world 0x41CFB68
 #define localplayer 0x2968
 #define gameBase 0x7ff6d3a90000
-
+extern "C" {
+	PVOID PsGetProcessSectionBaseAddress(PEPROCESS Process);
+}
 extern "C" {
 	NTKERNELAPI NTSTATUS MmCopyVirtualMemory(
 		PEPROCESS SourceProcess,
@@ -68,6 +70,7 @@ typedef struct _SHARED_DATA {
 	LONG x;
 	LONG y;
 	LONG z;
+	ULONG64 entityPtr;
 } SHARED_DATA, * PSHARED_DATA;
 
 int gPID;
@@ -89,7 +92,7 @@ NTSTATUS ReadMemory(PEPROCESS targetProcess, uintptr_t address, void* buffer, SI
 		size, KernelMode, &bytesRead);
 }
 
-NTSTATUS WriteSharedStructCoords(HANDLE targetPid, PVOID userStructAddress, LONG xd, LONG xy, LONG xz) {
+NTSTATUS WriteSharedStructCoords(HANDLE targetPid, PVOID userStructAddress, LONG xd, LONG xy, LONG xz, ULONG64 entityPointer) {
 	PEPROCESS targetProcess;
 	NTSTATUS status = PsLookupProcessByProcessId(targetPid, &targetProcess);
 
@@ -114,6 +117,7 @@ NTSTATUS WriteSharedStructCoords(HANDLE targetPid, PVOID userStructAddress, LONG
 	localCopy.x = xd;
 	localCopy.y = xy;
 	localCopy.z = xz;
+	localCopy.entityPtr = entityPointer;
 	// Write it back
 	status = MmCopyVirtualMemory(currentProcess, &localCopy, targetProcess, userStructAddress, bytes, KernelMode, &bytes);
 	ObDereferenceObject(targetProcess);
@@ -184,7 +188,7 @@ NTSTATUS getAssetsRadar() {
 			if (NT_SUCCESS(status)) {
 				DbgPrintEx(0, 0, "Raw Cords (LONGS): X=%ld, Y=%ld, Z=%ld\n", rawCords.x, rawCords.y, rawCords.z);
 			}
-
+		
 			//ULONG VERSION
 			VECTOR3_RAW rawCoords;
 			status = ReadMemory(targetProcess, visualStatePtr + 0x2C, &rawCoords, sizeof(rawCoords));
@@ -193,7 +197,7 @@ NTSTATUS getAssetsRadar() {
 				DbgPrintEx(0, 0, "Raw Coords (Read as ULONGs): X=%lu, Y=%lu, Z=%lu\n",
 					rawCoords.x, rawCoords.y, rawCoords.z);
 			}
-			WriteSharedStructCoords((HANDLE)gPID, (PVOID)gBaseAddr, rawCoords.x, rawCoords.y, rawCoords.z); // cords of the shared struct and the PID of the usermode application (minimap.exe)
+			WriteSharedStructCoords((HANDLE)gPID, (PVOID)gBaseAddr, rawCoords.x, rawCoords.y, rawCoords.z, entityPtr); // cords of the shared struct and the PID of the usermode application (minimap.exe)
 		}
 	}
 	ObDereferenceObject(targetProcess);
@@ -291,13 +295,11 @@ NTSTATUS ReadFromTextFile2() {
 		// Parse the PID and BaseAddr from the buffer
 		char* line = buffer;
 		char* pidStr = line;
-		char* baseAddrStr = NULL;
 
 		// Find the first newline character to separate the lines
 		while (*line != '\0') {
 			if (*line == '\n') {
 				*line = '\0';  // Null-terminate the first line
-				baseAddrStr = line + 1;  // Start of the second line (BaseAddr)
 				break;
 
 			}
@@ -316,24 +318,9 @@ NTSTATUS ReadFromTextFile2() {
 			return status;
 		}
 
-		// For BaseAddr - manual hex conversion
-		ULONG_PTR addr = 0;
-		char* p = baseAddrStr;
-		if (p[0] == '0' && (p[1] == 'x' || p[1] == 'X')) p += 2;  // Skip "0x" if present
-		while (*p) {
-			addr *= 16;
-			if (*p >= '0' && *p <= '9')
-				addr += *p - '0';
-			else if (*p >= 'a' && *p <= 'f')
-				addr += *p - 'a' + 10;
-			else if (*p >= 'A' && *p <= 'F')
-				addr += *p - 'A' + 10;
-			p++;
-		}
-		gBaseAddrDayZ = (PVOID)addr;
 
 		DbgPrintEx(0, 0, "[ReadTextFile] PID DayZ: %i\n", gPIDDayZ);
-		DbgPrintEx(0, 0, "[ReadTextFile] BaseAddr DayZ: %llx\n", gBaseAddrDayZ);
+
 	}
 
 	// Close the file
@@ -441,6 +428,22 @@ void memeHexConversion(char* baseAddrStr, PVOID& output) {
 	output = (PVOID)addr;
 }
 
+NTSTATUS GetProcessImageBaseAddress(HANDLE ProcessId, PVOID* ImageBase)
+{
+	PEPROCESS Process = NULL;
+	NTSTATUS status = PsLookupProcessByProcessId(ProcessId, &Process);
+	if (!NT_SUCCESS(status))
+		return status;
+
+	// PsGetProcessSectionBaseAddress is an undocumented function that returns
+	// the base address of the process’s main module.
+	*ImageBase = PsGetProcessSectionBaseAddress(Process);
+	DbgPrintEx(0, 0, "%llx", *ImageBase);
+	// Always dereference when done.
+	ObDereferenceObject(Process);
+	return STATUS_SUCCESS;
+}
+
 NTSTATUS ReadStructFromProcess() {
 	if (gPID == 0 || gBaseAddr == NULL) {
 		DbgPrintEx(0, 0, "Invalid PID or BaseAddr. Ensure ReadTextFile() is called first.\n");
@@ -453,7 +456,7 @@ NTSTATUS ReadStructFromProcess() {
 		DbgPrintEx(0, 0, "Failed to get target process for PID: %d (Status: 0x%X)\n", gPID, status);
 		return status;
 	}
-
+	
 	SHARED_DATA structData = { 0, 0, 0 };
 	SIZE_T bytesRead;
 	//hi
@@ -480,6 +483,7 @@ NTSTATUS ReadStructFromProcess() {
 				x = 3; // Prevent re-entering
 				// ************************************* RETRIEVE GLOBAL BASE ADDRESS VALUES HERE, FROM FILE OR STRUCT 
 				ReadFromTextFile2(); // gets dayz base address
+				GetProcessImageBaseAddress((HANDLE)gPIDDayZ, &gBaseAddrDayZ);
 				status = getAssetsRadar(); // gets radar
 				break; // Ensure this loop exits
 			}

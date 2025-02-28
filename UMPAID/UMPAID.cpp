@@ -105,7 +105,7 @@ typedef struct _SHARED_DATA {
     LONG x;
     LONG y;
     LONG z;
-    ULONG64 buffer;
+    ULONG64 entityPtr;
 } SHARED_DATA, * PSHARED_DATA;
 
 SHARED_DATA g_SharedData = { 10, 0, 30, 0x123 };  // Global struct
@@ -186,7 +186,7 @@ int main() {
     g_SharedData.y = 1;
     printf("Game detected. Status updated. Monitoring...\n");
     while (1) {
-        printf("x: %d, y: %d, z: %d, buffer: 0x%llx\n", g_SharedData.x, g_SharedData.y, g_SharedData.z, g_SharedData.buffer);
+        printf("x: %d, y: %d, z: %d, buffer: 0x%lld\n", g_SharedData.x, g_SharedData.y, g_SharedData.z, (ULONG64)g_SharedData.entityPtr);
         Sleep(25);
         // render coords on mini map and check for previous cords -> communicate with a overlay etc
         
