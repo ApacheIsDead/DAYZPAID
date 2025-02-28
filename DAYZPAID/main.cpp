@@ -70,6 +70,13 @@ typedef struct _SHARED_DATA {
 	LONG z;
 } SHARED_DATA, * PSHARED_DATA;
 
+typedef struct _SHARED_DATA_2 {
+	LONG x;
+	LONG y;
+	LONG z;
+	int entityListSize;
+} SHARED_DATA_2, * PSHARED_DATA_2;
+
 int gPID;
 PVOID gBaseAddr;
 int gPIDDayZ;
