@@ -6,12 +6,14 @@
 #include <thread>
 #include <chrono>
 #include <iostream>
-
-#include <commdlg.h>
-
 #include <set>
+#include <commdlg.h>
+#include <string>
+#include "Overlay.h"
 
 #define MAPPER_COMMAND "kdmapper driver.sys"
+
+
 
 typedef struct _SHARED_DATA {
     LONG x;
@@ -77,6 +79,77 @@ std::vector<SHARED_DATA>::iterator findEntityByPtr(ULONG64 entityPtr) {
         });
 }
 
+void Overlay::OverlayLoop()
+{
+    while (1)
+    {
+        //auto startTime = std::chrono::steady_clock::now();
+        MSG msg;
+        while (PeekMessage(&msg, NULL, 0U, 0U, PM_REMOVE))
+        {
+            TranslateMessage(&msg);
+            DispatchMessage(&msg);
+
+            if (msg.message == WM_QUIT)
+            {
+                // break other thread someehow
+                break;
+            }
+        }
+
+        ImGui_ImplDX11_NewFrame();
+        ImGui_ImplWin32_NewFrame();
+        ImGui::NewFrame();
+
+        ImGui::SetNextWindowPos(ImVec2(0, 0));
+        ImGui::SetNextWindowSize(ImVec2(1920, 1080));
+
+        ImGui::Begin("##ESP", (bool*)NULL, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoInputs);
+
+        // Open Menu
+        HWND ForegroundWindow = GetForegroundWindow();
+        LONG TmpLong = GetWindowLong(Hwnd, GWL_EXSTYLE);
+        LONG MenuStyle = WS_EX_LAYERED | WS_EX_TOOLWINDOW | WS_EX_TOPMOST;
+        LONG ESPStyle = WS_EX_TRANSPARENT | WS_EX_LAYERED | WS_EX_TOOLWINDOW | WS_EX_TOPMOST;
+
+        if (g.showMenu && MenuStyle != TmpLong)
+            SetWindowLong(Hwnd, GWL_EXSTYLE, WS_EX_LAYERED | WS_EX_TOOLWINDOW | WS_EX_TOPMOST);
+        else if (!g.showMenu && ESPStyle != TmpLong)
+            SetWindowLong(Hwnd, GWL_EXSTYLE, WS_EX_TRANSPARENT | WS_EX_LAYERED | WS_EX_TOOLWINDOW | WS_EX_TOPMOST);
+
+        // MenuToggle
+        if (GetKeyState(g.menuKey) && !g.showMenu) {
+            g.showMenu = !g.showMenu;
+
+            if (ForegroundWindow != Hwnd)
+                SetForegroundWindow(Hwnd);
+        }
+        else if (!GetKeyState(g.menuKey) && g.showMenu) {
+            g.showMenu = !g.showMenu;
+        }
+
+        if (g.showMenu)
+            RenderMenu();
+
+        std::string InfoText = std::to_string((int)ImGui::GetIO().Framerate) + " FPS";
+        ImGui::GetBackgroundDrawList()->AddText(ImVec2(0.f, 0.f), ImColor(0, 255, 0), InfoText.c_str());
+
+        ImGui::End();
+
+        ImGui::Render();
+        const float clear_color_with_alpha[4] = { 0.f, 0.f, 0.f, 0.f };
+        g_pd3dDeviceContext->OMSetRenderTargets(1, &g_mainRenderTargetView, NULL);
+        g_pd3dDeviceContext->ClearRenderTargetView(g_mainRenderTargetView, clear_color_with_alpha);
+        ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
+
+        g_pSwapChain->Present(0, 0);
+
+        //auto endTime = std::chrono::steady_clock::now();
+        //std::chrono::duration<double> elapsed_time = endTime - startTime;
+        //std::cout << "[GameManager] Time taken for OverlayLoop(): " << elapsed_time.count() << " seconds\n";
+    }
+}
+
 int main() {
     const char* filename = "C:\\Users\\proxi\\source\\logfile.txt";
     DWORD pid = GetCurrentProcessId();
@@ -130,6 +203,8 @@ int main() {
         // render coords on mini map and check for previous cords -> communicate with a overlay etc
     }
 
+    std::thread([&]() { ov.OverlayLoop(); }).detach();
+    
     return 0;
 }
 
