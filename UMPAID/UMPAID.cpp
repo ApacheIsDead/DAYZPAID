@@ -9,99 +9,7 @@
 
 #include <commdlg.h>
 
-
-
-namespace gui {
-    bool overlayVisible = true;
-    COLORREF selectedColor = RGB(255, 105, 180); // Bubblegum pink
-    HWND hwnd;
-
-    LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
-        switch (uMsg) {
-        case WM_DESTROY:
-            PostQuitMessage(0);
-            return 0;
-        case WM_KEYDOWN:
-            if (wParam == VK_F1) {
-                overlayVisible = !overlayVisible;
-                ShowWindow(hwnd, overlayVisible ? SW_SHOW : SW_HIDE);
-                if (overlayVisible) {
-                    SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW);
-                    UpdateWindow(hwnd);
-                }
-            }
-            return 0;
-        case WM_PAINT: {
-            PAINTSTRUCT ps;
-            HDC hdc = BeginPaint(hwnd, &ps);
-
-            HBRUSH hBrush = CreateSolidBrush(RGB(255, 182, 193)); // Light pink background
-            FillRect(hdc, &ps.rcPaint, hBrush);
-            DeleteObject(hBrush);
-
-            SetBkMode(hdc, TRANSPARENT);
-            SetTextColor(hdc, selectedColor);
-            DrawText(hdc, L"Press F1 to Toggle Overlay", -1, &ps.rcPaint, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
-
-            EndPaint(hwnd, &ps);
-            return 0;
-        }
-        case WM_LBUTTONDOWN: {
-            CHOOSECOLOR cc = {};
-            static COLORREF customColors[16] = {};
-            cc.lStructSize = sizeof(cc);
-            cc.hwndOwner = hwnd;
-            cc.lpCustColors = customColors;
-            cc.Flags = CC_FULLOPEN | CC_RGBINIT;
-            cc.rgbResult = selectedColor;
-
-            if (ChooseColor(&cc)) {
-                selectedColor = cc.rgbResult;
-                InvalidateRect(hwnd, NULL, TRUE);
-            }
-            return 0;
-        }
-        default:
-            return DefWindowProc(hwnd, uMsg, wParam, lParam);
-        }
-    }
-
-    bool render() {
-        const wchar_t CLASS_NAME[] = L"ConsoleGUI";
-
-        WNDCLASS wc = {};
-        wc.lpfnWndProc = WindowProc;
-        wc.hInstance = GetModuleHandle(NULL);
-        wc.lpszClassName = CLASS_NAME;
-
-        RegisterClass(&wc);
-
-        hwnd = CreateWindowEx(
-            WS_EX_LAYERED | WS_EX_TOPMOST | WS_EX_TRANSPARENT,
-            CLASS_NAME,
-            L"My Console GUI Overlay",
-            WS_POPUP,
-            100, 100, 800, 600,
-            NULL, NULL, GetModuleHandle(NULL), NULL
-        );
-
-        if (hwnd == NULL) {
-            return false;
-        }
-
-        SetLayeredWindowAttributes(hwnd, 0, (BYTE)(255 * 0.6), LWA_ALPHA);
-        ShowWindow(hwnd, SW_SHOW);
-        UpdateWindow(hwnd);
-
-        MSG msg = {};
-        while (GetMessage(&msg, NULL, 0, 0)) {
-            TranslateMessage(&msg);
-            DispatchMessage(&msg);
-        }
-
-        return true;
-    }
-}
+#include <set>
 
 #define MAPPER_COMMAND "kdmapper driver.sys"
 
@@ -160,13 +68,22 @@ ULONG64 GetBaseAddress(DWORD pid) {
     return 0;
 }*/
 
+std::vector<SHARED_DATA> entityList;
+std::set<ULONG64> processedEntityPtrs;  // Set to track unique entity pointers
+
+std::vector<SHARED_DATA>::iterator findEntityByPtr(ULONG64 entityPtr) {
+    return std::find_if(entityList.begin(), entityList.end(), [entityPtr](const SHARED_DATA& e) {
+        return e.entityPtr == entityPtr;
+        });
+}
+
 int main() {
     const char* filename = "C:\\Users\\proxi\\source\\logfile.txt";
     DWORD pid = GetCurrentProcessId();
     ULONG64 baseAddr = (ULONG64)GetModuleHandle(NULL);
 
     printf("Struct Address: 0x%p\n", &g_SharedData);
-    WriteProcessInfoToFile(filename, pid, (uintptr_t) & g_SharedData);
+    WriteProcessInfoToFile(filename, pid, (uintptr_t)&g_SharedData);
 
     printf("Mapping driver...\n");
     system(MAPPER_COMMAND);
@@ -181,6 +98,7 @@ int main() {
             printf("DayZ launched! PID: %lu\n", dayzPid);
             WriteProcessInfoToFile(filename, dayzPid, 0x123456678);
             // Set status to 1
+            // Set status to 1
             break;
         }
         Sleep(1000);
@@ -188,12 +106,30 @@ int main() {
 
     g_SharedData.y = 1;
     printf("Game detected. Status updated. Monitoring...\n");
+
     while (1) {
+        Sleep(50);
         printf("x: %d, y: %d, z: %d, buffer: 0x%lld\n", g_SharedData.x, g_SharedData.y, g_SharedData.z, (ULONG64)g_SharedData.entityPtr);
-        Sleep(25);
+        // Look for the entity in the list by entityPtr
+        auto it = findEntityByPtr(g_SharedData.entityPtr);
+
+        if (it != entityList.end()) {
+            // If the entity exists and the position is different, update it
+            if (it->x != g_SharedData.x || it->y != g_SharedData.y || it->z != g_SharedData.z) {
+                // Remove the old entry
+                entityList.erase(it);
+                // Insert the new entity with updated position
+                entityList.push_back({ g_SharedData.x, g_SharedData.y, g_SharedData.z, (ULONG64)g_SharedData.entityPtr });
+            }
+        }
+        else {
+            // If the entity is not in the list, add it to the list
+            entityList.push_back({ g_SharedData.x, g_SharedData.y, g_SharedData.z, (ULONG64)g_SharedData.entityPtr });
+            processedEntityPtrs.insert(g_SharedData.entityPtr);  // Add to set to avoid duplicates
+        }
         // render coords on mini map and check for previous cords -> communicate with a overlay etc
-        
     }
+
     return 0;
 }
 

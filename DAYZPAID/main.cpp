@@ -144,6 +144,7 @@ NTSTATUS getAssetsRadar() {
 		DbgPrintEx(0, 0, "Failed to get target process\n");
 		return status;
 	}
+
 	// world pointer
 	status = ReadPointer(targetProcess, worldPointerAddress, &worldPointerValue);
 	if (!NT_SUCCESS(status)) {
@@ -151,6 +152,7 @@ NTSTATUS getAssetsRadar() {
 		ObDereferenceObject(targetProcess);
 		return status;
 	}
+
 	// local player
 	status = ReadPointer(targetProcess, worldPointerAddress + localplayer, &localPlayerPtr);
 	if (!NT_SUCCESS(status)) {
@@ -178,6 +180,12 @@ NTSTATUS getAssetsRadar() {
 	}
 	
 	while (entityCount > 0) {
+		status = ReadMemory(targetProcess, worldPointerValue + 0xF50, &entityCount, sizeof(entityCount));
+		if (!NT_SUCCESS(status)) {
+			DbgPrintEx(0, 0, "Failed to read entity count (Status: 0x%X)\n", status);
+			ObDereferenceObject(targetProcess);
+			return status;
+		}
 		for (size_t i = 0; i < entityCount; i++) {
 			uintptr_t entityEntryAddress = entityListPointerValue + i * sizeof(uintptr_t);
 			uintptr_t entityPtr = 0;
@@ -195,7 +203,6 @@ NTSTATUS getAssetsRadar() {
 			if (!NT_SUCCESS(status) || visualStatePtr == 0) {
 				continue;
 			}
-
 			LARGE_INTEGER interval;
 			interval.QuadPart = -10000 * 100; // Time in 100ns units, negative value indicates sleep
 			KeDelayExecutionThread(KernelMode, FALSE, &interval);
@@ -425,7 +432,7 @@ NTSTATUS ReadFromTextFile() {
 	return STATUS_SUCCESS;
 }
 
-static void memeHexConversion(char* baseAddrStr, PVOID& output) {
+void memeHexConversion(char* baseAddrStr, PVOID& output) {
 	// For BaseAddr - manual hex conversion
 	ULONG_PTR addr = 0;
 	char* p = baseAddrStr;
