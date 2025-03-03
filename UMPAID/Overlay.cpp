@@ -2,6 +2,7 @@
 #include <dwmapi.h>
 #include <iostream>
 
+
 ID3D11Device* g_pd3dDevice = NULL;
 ID3D11DeviceContext* g_pd3dDeviceContext = NULL;
 IDXGISwapChain* g_pSwapChain = NULL;
@@ -138,6 +139,58 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 	return DefWindowProcA(hWnd, msg, wParam, lParam);
 }
 
+void Overlay::RenderRadar(std::vector<SHARED_DATA> entityList) {
+    // Radar window size
+    const float radarWidth = 600.0f;  // Radar width in pixels
+    const float radarHeight = 600.0f; // Radar height in pixels
+
+    // Charnarus map size
+    const float mapWidth = 15360.0f;
+    const float mapHeight = 15360.0f;
+
+    // City positions (x, y) and names
+    std::vector<std::pair<std::pair<float, float>, const char*>> cities = {
+        {{6900, 2830}, "Chernogorsk"},
+        {{10157, 2100}, "Elektro"},
+        {{4400, 2500}, "Balota"},
+        {{4500, 10100 }, "Nwaf" }
+    };
+
+    // Draw the radar background (optional, for visualization)
+    RectFilled(10, 10, 10 + radarWidth, 10 + radarHeight, ImColor(0.f, 0.f, 0.f, 0.725f), 0.f, 0);
+
+    // Iterate over the entities
+    for (auto entity : entityList) {
+        float entityx = (float)entity.x / 100000.0f;
+        float entityy = (float)entity.y / 100000.0f;
+        float entityz = (float)entity.z / 100000.0f;
+
+        // Scale the entity coordinates to the radar window
+        float scaledX = (entityx / mapWidth) * radarWidth;
+        float scaledY = (1.0f - (entityy / mapHeight)) * radarHeight;  // Flipping the Y axis
+
+        // Draw each entity as a circle on the radar
+        Circle(ImVec2(10 + scaledX, 10 + scaledY), 3.0f, ImColor(0.f, 0.f, 255.f, 255.f));  // Blue color for entities
+    }
+
+    // Optionally, you can draw a circle at the center to represent the player's position
+    Circle(ImVec2(10 + radarWidth / 2, 10 + radarHeight / 2), 5.0f, ImColor(255.f, 0.f, 0.f, 255.f));  // Red for player
+
+    // Draw city names and positions
+    for (const auto& city : cities) {
+        float cityX = city.first.first;
+        float cityY = city.first.second;
+
+        // Scale the city coordinates to the radar window
+        float scaledCityX = (cityX / mapWidth) * radarWidth;
+        float scaledCityY = (1.0f - (cityY / mapHeight)) * radarHeight;  // Flipping the Y axis
+
+        // Draw the city name at the radar position
+        ImVec2 cityPos(10 + scaledCityX, 10 + scaledCityY);
+        ImGui::GetWindowDrawList()->AddText(cityPos, ImColor(255.f, 255.f, 255.f, 255.f), city.second);
+    }
+}
+
 void Overlay::RenderMenu()
 {
     // Setup
@@ -162,9 +215,9 @@ void Overlay::RenderMenu()
         ImGui::Spacing();
 
         ImGui::Checkbox("ESP", &g.g_ESP);
-
         ImGui::NewLine();
         ImGui::Spacing();
+        ImGui::Checkbox("Radar", &g.g_ESP_Radar);
         break;
     case 1:
         ImGui::Text("Visual");

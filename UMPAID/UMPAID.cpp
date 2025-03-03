@@ -13,15 +13,6 @@
 
 #define MAPPER_COMMAND "kdmapper driver.sys"
 
-
-
-typedef struct _SHARED_DATA {
-    LONG x;
-    LONG y;
-    LONG z;
-    ULONG64 entityPtr;
-} SHARED_DATA, * PSHARED_DATA;
-
 SHARED_DATA g_SharedData = { 10, 0, 30, 0x123 };  // Global struct
 
 void WriteProcessInfoToFile(const char* filename, DWORD pid, ULONG64 baseAddr) {
@@ -78,6 +69,7 @@ std::vector<SHARED_DATA>::iterator findEntityByPtr(ULONG64 entityPtr) {
         return e.entityPtr == entityPtr;
         });
 }
+//world + 0x2974 = Brightness; 1.0-200.0;
 
 void Overlay::OverlayLoop()
 {
@@ -135,6 +127,14 @@ void Overlay::OverlayLoop()
             std::string InfoText = std::to_string((int)ImGui::GetIO().Framerate) + " FPS";
             ImGui::GetBackgroundDrawList()->AddText(ImVec2(0.f, 0.f), ImColor(0, 255, 0), InfoText.c_str());
 
+            // do radar here
+            if (g.g_ESP_Radar) {
+
+                //fakeMethod(); render();
+                RenderRadar(entityList);
+
+            }
+
             ImGui::End();
         }
 
@@ -154,8 +154,10 @@ void Overlay::OverlayLoop()
 
 void coding_stuff(const char* filename)
 {
+    std::this_thread::sleep_for(std::chrono::milliseconds(1000));
     printf("Waiting for DayZ to launch...\n");
     while (1) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(1000));
         DWORD dayzPid = GetProcessIdByName(L"DayZ_x64.exe");
         if (dayzPid) {
             printf("DayZ launched! PID: %lu\n", dayzPid);
@@ -171,7 +173,8 @@ void coding_stuff(const char* filename)
     printf("Game detected. Status updated. Monitoring...\n");
 
     while (1) {
-        Sleep(50);
+        std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+        Sleep(30);
         printf("x: %d, y: %d, z: %d, buffer: 0x%lld\n", g_SharedData.x, g_SharedData.y, g_SharedData.z, (ULONG64)g_SharedData.entityPtr);
         // Look for the entity in the list by entityPtr
         auto it = findEntityByPtr(g_SharedData.entityPtr);
@@ -187,7 +190,7 @@ void coding_stuff(const char* filename)
         }
         else {
             // If the entity is not in the list, add it to the list
-            entityList.push_back({ g_SharedData.x, g_SharedData.y, g_SharedData.z, (ULONG64)g_SharedData.entityPtr });
+            entityList.push_back({g_SharedData.x, g_SharedData.y, g_SharedData.z, (ULONG64)g_SharedData.entityPtr });
             processedEntityPtrs.insert(g_SharedData.entityPtr);  // Add to set to avoid duplicates
         }
         // render coords on mini map and check for previous cords -> communicate with a overlay etc
@@ -211,10 +214,10 @@ int main() {
     if (!ov.CreateOverlay()) // DONE
         return 2;
 
-    std::thread([&]() { coding_stuff; }).detach();
-
+    std::thread([&]() { coding_stuff(filename); }).detach();
+    Sleep(1000);
     ov.OverlayLoop();
-    
+    Sleep(500);
     return 0;
 }
 

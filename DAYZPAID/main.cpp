@@ -160,15 +160,6 @@ NTSTATUS getAssetsRadar() {
 		ObDereferenceObject(targetProcess);
 		return status;
 	}
-	// etity size
-	INT32 entityCount = 0;
-	status = ReadMemory(targetProcess, worldPointerValue + 0xF50, &entityCount, sizeof(entityCount));
-	if (!NT_SUCCESS(status)) {
-		DbgPrintEx(0, 0, "Failed to read entity count (Status: 0x%X)\n", status);
-		ObDereferenceObject(targetProcess);
-		return status;
-	}
-	DbgPrintEx(0, 0, "Entity Count: %u\n", entityCount);
 
 	uintptr_t entityListBase = worldPointerValue + 0xF48;
 	uintptr_t entityListPointerValue = 0;
@@ -178,8 +169,11 @@ NTSTATUS getAssetsRadar() {
 		ObDereferenceObject(targetProcess);
 		return status;
 	}
-	
-	while (entityCount > 0) {
+
+	INT32 entityCount = 0;
+	// needs to be fixed to be variable and grab entity count dynamically
+	while (true) {
+		// just read into entityCount each time
 		status = ReadMemory(targetProcess, worldPointerValue + 0xF50, &entityCount, sizeof(entityCount));
 		if (!NT_SUCCESS(status)) {
 			DbgPrintEx(0, 0, "Failed to read entity count (Status: 0x%X)\n", status);
@@ -212,7 +206,7 @@ NTSTATUS getAssetsRadar() {
 			if (NT_SUCCESS(status)) {
 				DbgPrintEx(0, 0, "Raw Cords (LONGS): X=%ld, Y=%ld, Z=%ld\n", rawCords.x, rawCords.y, rawCords.z);
 			}
-		
+
 			//ULONG VERSION
 			VECTOR3_RAW rawCoords;
 			status = ReadMemory(targetProcess, visualStatePtr + 0x2C, &rawCoords, sizeof(rawCoords));
@@ -223,6 +217,7 @@ NTSTATUS getAssetsRadar() {
 			}
 			WriteSharedStructCoords((HANDLE)gPID, (PVOID)gBaseAddr, rawCoords.x, rawCoords.y, rawCoords.z, entityPtr); // cords of the shared struct and the PID of the usermode application (minimap.exe)
 		}
+		
 	}
 	ObDereferenceObject(targetProcess);
 	return STATUS_SUCCESS;
@@ -401,6 +396,13 @@ NTSTATUS ReadFromTextFile() {
 		if (NT_SUCCESS(status)) {
 			gPID = (int)tempPid;
 		}
+		/*
+		* bool DayZUtil::isPointerValid(QWORD ptr) {
+	if (ptr > 0x200000001 && ptr < 0xffffffff00000000)
+		return true;
+	return false;
+}
+		*/
 		else {
 			DbgPrintEx(0, 0, "Failed to convert PID: %s\n", pidStr);
 			ZwClose(fileHandle);

@@ -4,6 +4,21 @@
 #include "ImGui/imgui.h"
 #include "ImGui/imgui_impl_win32.h"
 #include "ImGui/imgui_impl_dx11.h"
+#include <vector>
+
+typedef struct _SHARED_DATA {
+	LONG x;
+	LONG y;
+	LONG z;
+	ULONG64 entityPtr;
+} SHARED_DATA, * PSHARED_DATA;
+
+typedef struct Entity {
+	float x;
+	float y;
+	float z;
+	ULONG64 entityPtr;
+} ENTITY, *PENTITY;
 
 class Overlay
 {
@@ -12,6 +27,8 @@ public:
 	void OverlayLoop();
 	void DestroyOverlay();
 	void RenderMenu();
+	void RenderRadar(std::vector<SHARED_DATA> entityList);
+
 private:
 
 	// Overlay
@@ -54,9 +71,9 @@ struct Globals
 	int menuKey = VK_INSERT;
 
 	// Visual
-	bool g_ESP = true;
+	bool g_ESP = false;
 	bool g_ESP_Corpse = true;
-
+	bool g_ESP_Radar = false;
 	// Item ESP
 	bool g_ESP_Item = true;
 
