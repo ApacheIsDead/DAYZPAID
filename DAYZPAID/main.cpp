@@ -82,6 +82,9 @@ typedef struct _SHARED_DATA {
 	LONG InvertedViewRightX;
 	LONG InvertedViewRightY;
 	LONG InvertedViewRightZ;
+	LONG InvertedViewUpX;
+	LONG InvertedViewUpY;
+	LONG InvertedViewUpZ;
 	LONG InvertedViewForwardX;
 	LONG InvertedViewForwardY;
 	LONG InvertedViewForwardZ;
@@ -122,7 +125,12 @@ NTSTATUS ReadMemory(PEPROCESS targetProcess, uintptr_t address, void* buffer, SI
 		size, KernelMode, &bytesRead);
 }
 
-NTSTATUS WriteSharedStructInfo(HANDLE targetPid, PVOID userStructAddress, LONG xd, LONG xy, LONG xz, ULONG64 entityPointer, ULONG64 localPlayerPtr, LONG invertedx, LONG invertedy, LONG invertedz, LONG invertedviewrightx, LONG invertedviewrighty, LONG invertedviewrightz, LONG invertedviewforwardx, LONG invertedviewforwardy, LONG invertedviewforwardz, LONG viewportsizex, LONG viewportsizey, LONG viewportsizez, LONG projectiond1x, LONG projectiond1y, LONG projectiond1z, LONG projectiond2x, LONG projectiond2y, LONG projectiond2z) {
+NTSTATUS WriteSharedStructInfo(HANDLE targetPid, PVOID userStructAddress, LONG xd, LONG xy, LONG xz, ULONG64 entityPointer, 
+								ULONG64 localPlayerPtr, LONG invertedx, LONG invertedy, LONG invertedz, LONG invertedviewrightx, 
+								LONG invertedviewrighty, LONG invertedviewrightz, LONG invertedviewupx,
+								LONG invertedviewupy, LONG invertedviewupz, LONG invertedviewforwardx, LONG invertedviewforwardy,
+								LONG invertedviewforwardz, LONG viewportsizex, LONG viewportsizey, LONG viewportsizez, LONG projectiond1x, 
+								LONG projectiond1y, LONG projectiond1z, LONG projectiond2x, LONG projectiond2y, LONG projectiond2z) {
 	PEPROCESS targetProcess;
 	NTSTATUS status = PsLookupProcessByProcessId(targetPid, &targetProcess);
 
@@ -155,6 +163,9 @@ NTSTATUS WriteSharedStructInfo(HANDLE targetPid, PVOID userStructAddress, LONG x
 	localCopy.InvertedViewRightX = invertedviewrightx;
 	localCopy.InvertedViewRightY = invertedviewrighty;
 	localCopy.InvertedViewRightZ = invertedviewrightz;
+	localCopy.InvertedViewUpX = invertedviewupx;
+	localCopy.InvertedViewUpY = invertedviewupy;
+	localCopy.InvertedViewUpZ = invertedviewupz;
 	localCopy.InvertedViewForwardX = invertedviewforwardx;
 	localCopy.InvertedViewForwardY = invertedviewforwardy;
 	localCopy.InvertedViewForwardZ = invertedviewforwardz;
@@ -304,6 +315,15 @@ NTSTATUS sendInformation() {
 			return status;
 		}
 
+		VECTOR3 invViewUp;
+		status = ReadMemory(targetProcess, cameraPtr + 0x14, &invViewUp, sizeof(VECTOR3));
+		if (!NT_SUCCESS(status)) {
+			DbgPrintEx(0, 0, "Failed to read inverted view up (Status: 0x%X)\n", status);
+			ObDereferenceObject(targetProcess);
+
+			return status;
+		}
+
 		// inv view forward
 		VECTOR3 invViewForward;
 		status = ReadMemory(targetProcess, cameraPtr + 0x58, &invViewForward, sizeof(VECTOR3));
@@ -387,7 +407,7 @@ NTSTATUS sendInformation() {
 					rawCoords.x, rawCoords.y, rawCoords.z);
 			}
 			//NTSTATUS WriteSharedStructInfo(HANDLE targetPid, PVOID userStructAddress, LONG xd, LONG xy, LONG xz, ULONG64 entityPointer, ULONG64 localPlayerPtr, LONG invertedx, LONG invertedy, LONG invertedz, LONG invertedviewrightx, LONG invertedviewrighty, LONG invertedviewrightz, LONG invertedviewforwardx, LONG invertedviewforwardy, LONG invertedviewforwardz, LONG viewportsizex, LONG viewportsizey, LONG viewportsizez, LONG projectiond1x, LONG projectiond1y, LONG projectiond1z, LONG projectiond2x, LONG projectiond2y, LONG projectiond2z) 
-			WriteSharedStructInfo((HANDLE)gPID, (PVOID)gBaseAddr, rawCoords.x, rawCoords.y, rawCoords.z, entityPtr, localPlayerPtr, invViewTranslation.x, invViewTranslation.y, invViewTranslation.z, invViewRight.x, invViewRight.y, invViewRight.z, invViewForward.x, invViewForward.y, invViewForward.z, viewPortSize.x, viewPortSize.y, viewPortSize.z, projectionD1.x, projectionD1.y, projectionD1.z, projectionD2.x, projectionD2.y, projectionD2.z); // cords of the shared struct and the PID of the usermode application (minimap.exe)
+			WriteSharedStructInfo((HANDLE)gPID, (PVOID)gBaseAddr, rawCoords.x, rawCoords.y, rawCoords.z, entityPtr, localPlayerPtr, invViewTranslation.x, invViewTranslation.y, invViewTranslation.z, invViewRight.x, invViewRight.y, invViewRight.z, invViewUp.x, invViewUp.y, invViewUp.z, invViewForward.x, invViewForward.y, invViewForward.z, viewPortSize.x, viewPortSize.y, viewPortSize.z, projectionD1.x, projectionD1.y, projectionD1.z, projectionD2.x, projectionD2.y, projectionD2.z); // cords of the shared struct and the PID of the usermode application (minimap.exe)
 		}
 		
 	}

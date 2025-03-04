@@ -141,17 +141,16 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 
 DirectX::SimpleMath::Vector3 Overlay::WorldToScreen(const DirectX::SimpleMath::Vector3 position)
 {
-
-    Vector3 temp = position - InvertedViewTranslation;
+    DirectX::SimpleMath::Vector3 temp = position - InvertedViewTranslation;
 
     float x = (temp.x * InvertedViewRight.x) + (temp.y * InvertedViewRight.y) + (temp.z * InvertedViewRight.z);
     float y = (temp.x * InvertedViewUp.x) + (temp.y * InvertedViewUp.y) + (temp.z * InvertedViewUp.z);
     float z = (temp.x * InvertedViewForward.x) + (temp.y * InvertedViewForward.y) + (temp.z * InvertedViewForward.z);
 
     if (z < 0.1f)
-        return Vector3(0.f, 0.f, 0.f);
+        return DirectX::SimpleMath::Vector3(0.f, 0.f, 0.f);
 
-    Vector3 res(
+    DirectX::SimpleMath::Vector3 res(
         ViewportSize.x * (1 + (x / ProjectionD1.x / z)),
         ViewportSize.y * (1 - (y / ProjectionD2.y / z)),
         z);
@@ -162,12 +161,50 @@ DirectX::SimpleMath::Vector3 Overlay::WorldToScreen(const DirectX::SimpleMath::V
 static int quadrant = -1; // -1 for full map view
 void Overlay::RenderEsp(std::vector<SHARED_DATA> entityList) {
     INT32 x = 0;
+
+    // Convert camera data from long to float
+    float InvertedViewTranslationX = *(float*)&ov.InvertedViewTranslationX;
+    float InvertedViewTranslationY = *(float*)&ov.InvertedViewTranslationY;
+    float InvertedViewTranslationZ = *(float*)&ov.InvertedViewTranslationZ;
+    float InvertedViewRightX = *(float*)&ov.InvertedViewRightX;
+    float InvertedViewRightY = *(float*)&ov.InvertedViewRightY;
+    float InvertedViewRightZ = *(float*)&ov.InvertedViewRightZ;
+    float InvertedViewUpX = *(float*)&ov.InvertedViewUpX;
+    float InvertedViewUpY = *(float*)&ov.InvertedViewUpY;
+    float InvertedViewUpZ = *(float*)&ov.InvertedViewUpZ;
+    float InvertedViewForwardX = *(float*)&ov.InvertedViewForwardX;
+    float InvertedViewForwardY = *(float*)&ov.InvertedViewForwardY;
+    float InvertedViewForwardZ = *(float*)&ov.InvertedViewForwardZ;
+    float viewPortSizeX = *(float*)&ov.viewPortSizeX;
+    float viewPortSizeY = *(float*)&ov.viewPortSizeY;
+    float viewPortSizeZ = *(float*)&ov.viewPortSizeZ;
+    float projectionD1X = *(float*)&ov.projectionD1X;
+    float projectionD1Y = *(float*)&ov.projectionD1Y;
+    float projectionD1Z = *(float*)&ov.projectionD1Z;
+    float projectionD2X = *(float*)&ov.projectionD2X;
+    float projectionD2Y = *(float*)&ov.projectionD2Y;
+    float projectionD2Z = *(float*)&ov.projectionD2Z;
+
+
+    InvertedViewTranslation = DirectX::SimpleMath::Vector3(InvertedViewTranslationX, InvertedViewTranslationY, InvertedViewTranslationZ);
+    InvertedViewRight = DirectX::SimpleMath::Vector3(InvertedViewRightX, InvertedViewRightY, InvertedViewRightZ);
+    InvertedViewUp = DirectX::SimpleMath::Vector3(InvertedViewUpX, InvertedViewUpY, InvertedViewUpZ);
+    InvertedViewForward = DirectX::SimpleMath::Vector3(InvertedViewForwardX, InvertedViewForwardY, InvertedViewForwardZ);
+    ViewportSize = DirectX::SimpleMath::Vector3(viewPortSizeX, viewPortSizeY, viewPortSizeZ);
+    ProjectionD1 = DirectX::SimpleMath::Vector3(projectionD1X, projectionD1Y, projectionD1Z);
+    ProjectionD2 = DirectX::SimpleMath::Vector3(projectionD2X, projectionD2Y, projectionD2Z);
+
     for (auto entity : entityList) {
         x += 1;
         float entityx = *(float*)&entity.x;
         float entityy = *(float*)&entity.y;
         float entityz = *(float*)&entity.z;
         
+        // calculate the screen positions for each of the player's bones
+        DirectX::SimpleMath::Vector3 screenPosition = WorldToScreen(DirectX::SimpleMath::Vector3(entityx, entityy, entityz));
+        ImColor pColor = ImColor(0.f, 0.f, 255.f, 255.f);
+        std::string toWrite = "Player";
+        ImGui::GetWindowDrawList()->AddText(ImVec2(screenPosition.x, screenPosition.y), pColor, toWrite.c_str());
     }
     
 }

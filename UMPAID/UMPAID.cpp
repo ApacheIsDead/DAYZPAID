@@ -129,9 +129,10 @@ void Overlay::OverlayLoop()
 
             // do radar here
             if (g.g_ESP_Radar) {
-
                 //fakeMethod(); render();
                 RenderRadar(entityList);
+            }
+            if (g.g_ESP) {
                 RenderEsp(entityList);
             }
 
@@ -196,7 +197,28 @@ void coding_stuff(const char* filename)
             processedEntityPtrs.insert(g_SharedData.entityPtr);  // Add to set to avoid duplicates
         }
         // render coords on mini map and check for previous cords -> communicate with a overlay etc
-
+        // Grab camera data
+        ov.InvertedViewTranslationX = g_SharedData.InvertedViewTranslationX;
+        ov.InvertedViewTranslationY = g_SharedData.InvertedViewTranslationY;
+        ov.InvertedViewTranslationZ = g_SharedData.InvertedViewTranslationZ;
+        ov.InvertedViewRightX = g_SharedData.InvertedViewRightX;
+        ov.InvertedViewRightY = g_SharedData.InvertedViewRightY;
+        ov.InvertedViewRightZ = g_SharedData.InvertedViewRightZ;
+        ov.InvertedViewUpX = g_SharedData.InvertedViewUpX;
+        ov.InvertedViewUpY = g_SharedData.InvertedViewUpY;
+        ov.InvertedViewUpZ = g_SharedData.InvertedViewUpZ;
+        ov.InvertedViewForwardX = g_SharedData.InvertedViewForwardX;
+        ov.InvertedViewForwardY = g_SharedData.InvertedViewForwardY;
+        ov.InvertedViewForwardZ = g_SharedData.InvertedViewForwardZ;
+        ov.viewPortSizeX = g_SharedData.viewPortSizeX;
+        ov.viewPortSizeY = g_SharedData.viewPortSizeY;
+        ov.viewPortSizeZ = g_SharedData.viewPortSizeZ;
+        ov.projectionD1X = g_SharedData.projectionD1X;
+        ov.projectionD1Y = g_SharedData.projectionD1Y;
+        ov.projectionD1Z = g_SharedData.projectionD1Z;
+        ov.projectionD2X = g_SharedData.projectionD2X;
+        ov.projectionD2Y = g_SharedData.projectionD2Y;
+        ov.projectionD2Z = g_SharedData.projectionD2Z;
     }
 }
 

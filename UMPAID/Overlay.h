@@ -20,6 +20,9 @@ typedef struct _SHARED_DATA {
 	LONG InvertedViewRightX;
 	LONG InvertedViewRightY;
 	LONG InvertedViewRightZ;
+	LONG InvertedViewUpX;
+	LONG InvertedViewUpY;
+	LONG InvertedViewUpZ;
 	LONG InvertedViewForwardX;
 	LONG InvertedViewForwardY;
 	LONG InvertedViewForwardZ;
@@ -53,10 +56,35 @@ public:
 	DirectX::SimpleMath::Vector3 WorldToScreen(const DirectX::SimpleMath::Vector3 position);
 	void RenderEsp(std::vector<SHARED_DATA> entityList);
 	DirectX::SimpleMath::Vector3 InvertedViewTranslation;
-	DirectX::SimpleMath::Vector3 InvertedViewTranslation;
 	DirectX::SimpleMath::Vector3 InvertedViewRight;
 	DirectX::SimpleMath::Vector3 InvertedViewUp;
 	DirectX::SimpleMath::Vector3 InvertedViewForward;
+	DirectX::SimpleMath::Vector3 ViewportSize;
+	DirectX::SimpleMath::Vector3 ProjectionD1;
+	DirectX::SimpleMath::Vector3 ProjectionD2;
+
+
+	LONG InvertedViewTranslationX;
+	LONG InvertedViewTranslationY;
+	LONG InvertedViewTranslationZ;
+	LONG InvertedViewRightX;
+	LONG InvertedViewRightY;
+	LONG InvertedViewRightZ;
+	LONG InvertedViewUpX;
+	LONG InvertedViewUpY;
+	LONG InvertedViewUpZ;
+	LONG InvertedViewForwardX;
+	LONG InvertedViewForwardY;
+	LONG InvertedViewForwardZ;
+	LONG viewPortSizeX;
+	LONG viewPortSizeY;
+	LONG viewPortSizeZ;
+	LONG projectionD1X;
+	LONG projectionD1Y;
+	LONG projectionD1Z;
+	LONG projectionD2X;
+	LONG projectionD2Y;
+	LONG projectionD2Z;
 private:
 
 	// Overlay
