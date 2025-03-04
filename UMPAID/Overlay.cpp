@@ -139,7 +139,38 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 	return DefWindowProcA(hWnd, msg, wParam, lParam);
 }
 
+DirectX::SimpleMath::Vector3 Overlay::WorldToScreen(const DirectX::SimpleMath::Vector3 position)
+{
+
+    Vector3 temp = position - InvertedViewTranslation;
+
+    float x = (temp.x * InvertedViewRight.x) + (temp.y * InvertedViewRight.y) + (temp.z * InvertedViewRight.z);
+    float y = (temp.x * InvertedViewUp.x) + (temp.y * InvertedViewUp.y) + (temp.z * InvertedViewUp.z);
+    float z = (temp.x * InvertedViewForward.x) + (temp.y * InvertedViewForward.y) + (temp.z * InvertedViewForward.z);
+
+    if (z < 0.1f)
+        return Vector3(0.f, 0.f, 0.f);
+
+    Vector3 res(
+        ViewportSize.x * (1 + (x / ProjectionD1.x / z)),
+        ViewportSize.y * (1 - (y / ProjectionD2.y / z)),
+        z);
+
+    return res;
+}
+
 static int quadrant = -1; // -1 for full map view
+void Overlay::RenderEsp(std::vector<SHARED_DATA> entityList) {
+    INT32 x = 0;
+    for (auto entity : entityList) {
+        x += 1;
+        float entityx = *(float*)&entity.x;
+        float entityy = *(float*)&entity.y;
+        float entityz = *(float*)&entity.z;
+        
+    }
+    
+}
 
 void Overlay::RenderRadar(std::vector<SHARED_DATA> entityList) {
     const float radarWidth = 600.0f;

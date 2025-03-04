@@ -76,6 +76,24 @@ typedef struct _SHARED_DATA {
 	LONG z;
 	ULONG64 entityPtr;
 	ULONG64 localPlayerPtr;
+	LONG InvertedViewTranslationX;
+	LONG InvertedViewTranslationY;
+	LONG InvertedViewTranslationZ;
+	LONG InvertedViewRightX;
+	LONG InvertedViewRightY;
+	LONG InvertedViewRightZ;
+	LONG InvertedViewForwardX;
+	LONG InvertedViewForwardY;
+	LONG InvertedViewForwardZ;
+	LONG viewPortSizeX;
+	LONG viewPortSizeY;
+	LONG viewPortSizeZ;
+	LONG projectionD1X;
+	LONG projectionD1Y;
+	LONG projectionD1Z;
+	LONG projectionD2X;
+	LONG projectionD2Y;
+	LONG projectionD2Z;
 } SHARED_DATA, * PSHARED_DATA;
 
 typedef struct _SHARED_DATA_2 {
@@ -104,7 +122,7 @@ NTSTATUS ReadMemory(PEPROCESS targetProcess, uintptr_t address, void* buffer, SI
 		size, KernelMode, &bytesRead);
 }
 
-NTSTATUS WriteSharedStructCoords(HANDLE targetPid, PVOID userStructAddress, LONG xd, LONG xy, LONG xz, ULONG64 entityPointer, ULONG64 localPlayerPtr) {
+NTSTATUS WriteSharedStructInfo(HANDLE targetPid, PVOID userStructAddress, LONG xd, LONG xy, LONG xz, ULONG64 entityPointer, ULONG64 localPlayerPtr, LONG invertedx, LONG invertedy, LONG invertedz, LONG invertedviewrightx, LONG invertedviewrighty, LONG invertedviewrightz, LONG invertedviewforwardx, LONG invertedviewforwardy, LONG invertedviewforwardz, LONG viewportsizex, LONG viewportsizey, LONG viewportsizez, LONG projectiond1x, LONG projectiond1y, LONG projectiond1z, LONG projectiond2x, LONG projectiond2y, LONG projectiond2z) {
 	PEPROCESS targetProcess;
 	NTSTATUS status = PsLookupProcessByProcessId(targetPid, &targetProcess);
 
@@ -131,6 +149,24 @@ NTSTATUS WriteSharedStructCoords(HANDLE targetPid, PVOID userStructAddress, LONG
 	localCopy.z = xz;
 	localCopy.entityPtr = entityPointer;
 	localCopy.localPlayerPtr = localPlayerPtr;
+	localCopy.InvertedViewTranslationX = invertedx;
+	localCopy.InvertedViewTranslationY = invertedy;
+	localCopy.InvertedViewTranslationZ = invertedz;
+	localCopy.InvertedViewRightX = invertedviewrightx;
+	localCopy.InvertedViewRightY = invertedviewrighty;
+	localCopy.InvertedViewRightZ = invertedviewrightz;
+	localCopy.InvertedViewForwardX = invertedviewforwardx;
+	localCopy.InvertedViewForwardY = invertedviewforwardy;
+	localCopy.InvertedViewForwardZ = invertedviewforwardz;
+	localCopy.viewPortSizeX = viewportsizex;
+	localCopy.viewPortSizeY = viewportsizey;
+	localCopy.viewPortSizeZ = viewportsizez;
+	localCopy.projectionD1X = projectiond1x;
+	localCopy.projectionD1Y = projectiond1y;
+	localCopy.projectionD1Z = projectiond1z;
+	localCopy.projectionD2X = projectiond2x;
+	localCopy.projectionD2Y = projectiond2y;
+	localCopy.projectionD2Z = projectiond2z;
 	// Write it back
 	status = MmCopyVirtualMemory(currentProcess, &localCopy, targetProcess, userStructAddress, bytes, KernelMode, &bytes);
 	ObDereferenceObject(targetProcess);
@@ -198,13 +234,13 @@ NTSTATUS noGrass() {
 	return STATUS_SUCCESS;
 }
 
-
-NTSTATUS getAssetsRadar() {
+NTSTATUS sendInformation() {
 	PEPROCESS targetProcess;        //(uintptr_t)gBaseAddrDayZ
 	DbgPrintEx(0, 0, "%llx", (uintptr_t)gBaseAddrDayZ); 
 	uintptr_t worldPointerAddress = (uintptr_t)gBaseAddrDayZ + world; // Game base address + world offset - here
 	uintptr_t worldPointerValue = 0;
 	uintptr_t localPlayerPtr = 0;
+	uintptr_t cameraPtr = 0;
 	// get handle
 	NTSTATUS status = PsLookupProcessByProcessId((HANDLE)gPIDDayZ, &targetProcess); // DayZ PID here
 	if (!NT_SUCCESS(status)) {
@@ -216,6 +252,13 @@ NTSTATUS getAssetsRadar() {
 	status = ReadPointer(targetProcess, worldPointerAddress, &worldPointerValue);
 	if (!NT_SUCCESS(status)) {
 		DbgPrintEx(0, 0, "Failed to read world pointer (Status: 0x%X)\n", status);
+		ObDereferenceObject(targetProcess);
+		return status;
+	}
+
+	status = ReadMemory(targetProcess, worldPointerValue + 0x1B8, &cameraPtr, sizeof(cameraPtr));
+	if (!NT_SUCCESS(status)) {
+		DbgPrintEx(0, 0, "Failed to read camera pointer (Status: 0x%X)\n", status);
 		ObDereferenceObject(targetProcess);
 		return status;
 	}
@@ -238,10 +281,68 @@ NTSTATUS getAssetsRadar() {
 	}
 
 	INT32 entityCount = 0;
-	DbgPrintEx(0, 0, "Entering ch loop");
+	DbgPrintEx(0, 0, "Entering information send loop");
+
 	// needs to be fixed to be variable and grab entity count dynamically
 	while (true) {
-		
+		///////////////////////////////////////////////////////////////////////////////////////////////////
+		VECTOR3 invViewTranslation;
+		status = ReadMemory(targetProcess, cameraPtr + 0x2C, &invViewTranslation, sizeof(VECTOR3));
+		if (!NT_SUCCESS(status)) {
+			DbgPrintEx(0, 0, "Failed to read inverted view translation (Status: 0x%X)\n", status);
+			ObDereferenceObject(targetProcess);
+
+			return status;
+		}
+
+		VECTOR3 invViewRight;
+		status = ReadMemory(targetProcess, cameraPtr + 0x8, &invViewRight, sizeof(VECTOR3));
+		if (!NT_SUCCESS(status)) {
+			DbgPrintEx(0, 0, "Failed to read inverted view right (Status: 0x%X)\n", status);
+			ObDereferenceObject(targetProcess);
+
+			return status;
+		}
+
+		// inv view forward
+		VECTOR3 invViewForward;
+		status = ReadMemory(targetProcess, cameraPtr + 0x58, &invViewForward, sizeof(VECTOR3));
+		if (!NT_SUCCESS(status)) {
+			DbgPrintEx(0, 0, "Failed to read inverted view forward (Status: 0x%X)\n", status);
+			ObDereferenceObject(targetProcess);
+
+			return status;
+		}
+
+		// inv view forward
+		VECTOR3 viewPortSize;
+		status = ReadMemory(targetProcess, cameraPtr + 0x20, &viewPortSize, sizeof(VECTOR3));
+		if (!NT_SUCCESS(status)) {
+			DbgPrintEx(0, 0, "Failed to read view port size (Status: 0x%X)\n", status);
+			ObDereferenceObject(targetProcess);
+
+			return status;
+		}
+
+		VECTOR3 projectionD1;
+		status = ReadMemory(targetProcess, cameraPtr + 0xD0, &projectionD1, sizeof(VECTOR3));
+		if (!NT_SUCCESS(status)) {
+			DbgPrintEx(0, 0, "Failed to read projection D1 (Status: 0x%X)\n", status);
+			ObDereferenceObject(targetProcess);
+
+			return status;
+		}
+
+		VECTOR3 projectionD2;
+		status = ReadMemory(targetProcess, cameraPtr + 0xDC, &projectionD2, sizeof(VECTOR3));
+		if (!NT_SUCCESS(status)) {
+			DbgPrintEx(0, 0, "Failed to read projection D2 (Status: 0x%X)\n", status);
+			ObDereferenceObject(targetProcess);
+			
+			return status;
+		}
+
+		/////////////////////////////////////////////////////////////////////////////////////////////////////
 		// just read into entityCount each time
 		status = ReadMemory(targetProcess, worldPointerValue + 0x1098, &entityCount, sizeof(entityCount));
 		if (!NT_SUCCESS(status)) {
@@ -249,6 +350,7 @@ NTSTATUS getAssetsRadar() {
 			ObDereferenceObject(targetProcess);
 			return status;
 		}
+
 		for (size_t i = 0; i < entityCount; i++) {
 			uintptr_t entityEntryAddress = entityListPointerValue + i * sizeof(uintptr_t);
 			uintptr_t entityPtr = 0;
@@ -284,7 +386,8 @@ NTSTATUS getAssetsRadar() {
 				DbgPrintEx(0, 0, "Raw Coords (Read as ULONGs): X=%lu, Y=%lu, Z=%lu\n",
 					rawCoords.x, rawCoords.y, rawCoords.z);
 			}
-			WriteSharedStructCoords((HANDLE)gPID, (PVOID)gBaseAddr, rawCoords.x, rawCoords.y, rawCoords.z, entityPtr, localPlayerPtr); // cords of the shared struct and the PID of the usermode application (minimap.exe)
+			//NTSTATUS WriteSharedStructInfo(HANDLE targetPid, PVOID userStructAddress, LONG xd, LONG xy, LONG xz, ULONG64 entityPointer, ULONG64 localPlayerPtr, LONG invertedx, LONG invertedy, LONG invertedz, LONG invertedviewrightx, LONG invertedviewrighty, LONG invertedviewrightz, LONG invertedviewforwardx, LONG invertedviewforwardy, LONG invertedviewforwardz, LONG viewportsizex, LONG viewportsizey, LONG viewportsizez, LONG projectiond1x, LONG projectiond1y, LONG projectiond1z, LONG projectiond2x, LONG projectiond2y, LONG projectiond2z) 
+			WriteSharedStructInfo((HANDLE)gPID, (PVOID)gBaseAddr, rawCoords.x, rawCoords.y, rawCoords.z, entityPtr, localPlayerPtr, invViewTranslation.x, invViewTranslation.y, invViewTranslation.z, invViewRight.x, invViewRight.y, invViewRight.z, invViewForward.x, invViewForward.y, invViewForward.z, viewPortSize.x, viewPortSize.y, viewPortSize.z, projectionD1.x, projectionD1.y, projectionD1.z, projectionD2.x, projectionD2.y, projectionD2.z); // cords of the shared struct and the PID of the usermode application (minimap.exe)
 		}
 		
 	}
@@ -578,7 +681,7 @@ NTSTATUS ReadStructFromProcess() {
 				ReadFromTextFile2(); // gets dayz base address
 				GetProcessImageBaseAddress((HANDLE)gPIDDayZ, &gBaseAddrDayZ);
 				status = noGrass();
-				status = getAssetsRadar(); // gets radar
+				status = sendInformation(); // gets radar
 				break; // Ensure this loop exits
 			}
 			else if (structData.y == 0) {

@@ -5,6 +5,8 @@
 #include "ImGui/imgui_impl_win32.h"
 #include "ImGui/imgui_impl_dx11.h"
 #include <vector>
+#include "SimpleMath.h";
+
 
 typedef struct _SHARED_DATA {
 	LONG x;
@@ -12,6 +14,24 @@ typedef struct _SHARED_DATA {
 	LONG z;
 	ULONG64 entityPtr;
 	ULONG64 localPlayerPtr;
+	LONG InvertedViewTranslationX;
+	LONG InvertedViewTranslationY;
+	LONG InvertedViewTranslationZ;
+	LONG InvertedViewRightX;
+	LONG InvertedViewRightY;
+	LONG InvertedViewRightZ;
+	LONG InvertedViewForwardX;
+	LONG InvertedViewForwardY;
+	LONG InvertedViewForwardZ;
+	LONG viewPortSizeX;
+	LONG viewPortSizeY;
+	LONG viewPortSizeZ;
+	LONG projectionD1X;
+	LONG projectionD1Y;
+	LONG projectionD1Z;
+	LONG projectionD2X;
+	LONG projectionD2Y;
+	LONG projectionD2Z;
 } SHARED_DATA, * PSHARED_DATA;
 
 typedef struct Entity {
@@ -21,6 +41,7 @@ typedef struct Entity {
 	ULONG64 entityPtr;
 } ENTITY, *PENTITY;
 
+
 class Overlay
 {
 public:
@@ -29,7 +50,13 @@ public:
 	void DestroyOverlay();
 	void RenderMenu();
 	void RenderRadar(std::vector<SHARED_DATA> entityList);
-
+	DirectX::SimpleMath::Vector3 WorldToScreen(const DirectX::SimpleMath::Vector3 position);
+	void RenderEsp(std::vector<SHARED_DATA> entityList);
+	DirectX::SimpleMath::Vector3 InvertedViewTranslation;
+	DirectX::SimpleMath::Vector3 InvertedViewTranslation;
+	DirectX::SimpleMath::Vector3 InvertedViewRight;
+	DirectX::SimpleMath::Vector3 InvertedViewUp;
+	DirectX::SimpleMath::Vector3 InvertedViewForward;
 private:
 
 	// Overlay

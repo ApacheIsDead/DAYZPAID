@@ -132,7 +132,7 @@ void Overlay::OverlayLoop()
 
                 //fakeMethod(); render();
                 RenderRadar(entityList);
-
+                RenderEsp(entityList);
             }
 
             ImGui::End();
@@ -178,7 +178,7 @@ void coding_stuff(const char* filename)
         Sleep(30);
         printf("x: %d, y: %d, z: %d, entPtr: 0x%lld, playerPtr: 0x%lld\n", g_SharedData.x, g_SharedData.y, g_SharedData.z, (ULONG64)g_SharedData.entityPtr, (ULONG64)g_SharedData.localPlayerPtr);
         // Look for the entity in the list by entityPtr
-        auto it = findEntityByPtr(g_SharedData.entityPtr);
+        auto it = findEntityByPtr(g_SharedData.entityPtr); // at this point we have all angles
 
         if (it != entityList.end()) {
             // If the entity exists and the position is different, update it
@@ -187,6 +187,7 @@ void coding_stuff(const char* filename)
                 entityList.erase(it);
                 // Insert the new entity with updated position
                 entityList.push_back({ g_SharedData.x, g_SharedData.y, g_SharedData.z, (ULONG64)g_SharedData.entityPtr });
+
             }
         }
         else {
@@ -195,6 +196,7 @@ void coding_stuff(const char* filename)
             processedEntityPtrs.insert(g_SharedData.entityPtr);  // Add to set to avoid duplicates
         }
         // render coords on mini map and check for previous cords -> communicate with a overlay etc
+
     }
 }
 
