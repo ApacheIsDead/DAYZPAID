@@ -97,6 +97,7 @@ typedef struct _SHARED_DATA {
 	LONG projectionD2X;
 	LONG projectionD2Y;
 	LONG projectionD2Z;
+	INT32 option;
 } SHARED_DATA, * PSHARED_DATA;
 
 typedef struct _SHARED_DATA_2 {
@@ -125,7 +126,7 @@ NTSTATUS ReadMemory(PEPROCESS targetProcess, uintptr_t address, void* buffer, SI
 		size, KernelMode, &bytesRead);
 }
 
-NTSTATUS WriteSharedStructInfo(HANDLE targetPid, PVOID userStructAddress, LONG xd, LONG xy, LONG xz, ULONG64 entityPointer, 
+NTSTATUS WriteSharedStructEspInformation(HANDLE targetPid, PVOID userStructAddress, LONG xd, LONG xy, LONG xz, ULONG64 entityPointer, 
 								ULONG64 localPlayerPtr, LONG invertedx, LONG invertedy, LONG invertedz, LONG invertedviewrightx, 
 								LONG invertedviewrighty, LONG invertedviewrightz, LONG invertedviewupx,
 								LONG invertedviewupy, LONG invertedviewupz, LONG invertedviewforwardx, LONG invertedviewforwardy,
@@ -178,6 +179,40 @@ NTSTATUS WriteSharedStructInfo(HANDLE targetPid, PVOID userStructAddress, LONG x
 	localCopy.projectionD2X = projectiond2x;
 	localCopy.projectionD2Y = projectiond2y;
 	localCopy.projectionD2Z = projectiond2z;
+	// Write it back
+	status = MmCopyVirtualMemory(currentProcess, &localCopy, targetProcess, userStructAddress, bytes, KernelMode, &bytes);
+	ObDereferenceObject(targetProcess);
+	return status;
+}
+
+NTSTATUS WriteSharedStructRadarInformation(HANDLE targetPid, PVOID userStructAddress, LONG xd, LONG xy, LONG xz, ULONG64 entityPointer,
+	ULONG64 localPlayerPtr) {
+	PEPROCESS targetProcess;
+	NTSTATUS status = PsLookupProcessByProcessId(targetPid, &targetProcess);
+
+	if (!NT_SUCCESS(status)) return status;
+
+	SHARED_DATA localCopy = { 0 };
+
+	SIZE_T bytes = sizeof(SHARED_DATA);
+
+	// Ensure compatibility with PsGetCurrentProcess()
+	PVOID processPtr = PsGetCurrentProcess();
+	PEPROCESS currentProcess = (PEPROCESS)processPtr;
+
+	// Read struct from user-mode process
+	status = MmCopyVirtualMemory(targetProcess, userStructAddress, currentProcess, &localCopy, bytes, KernelMode, &bytes);
+	if (!NT_SUCCESS(status)) {
+		ObDereferenceObject(targetProcess);
+		return status;
+	}
+
+	// Modify values
+	localCopy.x = xd;
+	localCopy.y = xy;
+	localCopy.z = xz;
+	localCopy.entityPtr = entityPointer;
+	localCopy.localPlayerPtr = localPlayerPtr;
 	// Write it back
 	status = MmCopyVirtualMemory(currentProcess, &localCopy, targetProcess, userStructAddress, bytes, KernelMode, &bytes);
 	ObDereferenceObject(targetProcess);
@@ -245,7 +280,97 @@ NTSTATUS noGrass() {
 	return STATUS_SUCCESS;
 }
 
-NTSTATUS sendInformation() {
+
+NTSTATUS sendRadarInformation() {
+	PEPROCESS targetProcess;        //(uintptr_t)gBaseAddrDayZ
+	DbgPrintEx(0, 0, "%llx", (uintptr_t)gBaseAddrDayZ);
+	uintptr_t worldPointerAddress = (uintptr_t)gBaseAddrDayZ + world; // Game base address + world offset - here
+	uintptr_t worldPointerValue = 0;
+	uintptr_t localPlayerPtr = 0;
+	// get handle
+	NTSTATUS status = PsLookupProcessByProcessId((HANDLE)gPIDDayZ, &targetProcess); // DayZ PID here
+	if (!NT_SUCCESS(status)) {
+		DbgPrintEx(0, 0, "Failed to get target process\n");
+		return status;
+	}
+
+	// world pointer
+	status = ReadPointer(targetProcess, worldPointerAddress, &worldPointerValue);
+	if (!NT_SUCCESS(status)) {
+		DbgPrintEx(0, 0, "Failed to read world pointer (Status: 0x%X)\n", status);
+		ObDereferenceObject(targetProcess);
+		return status;
+	}
+
+
+	// local player
+	status = ReadPointer(targetProcess, worldPointerAddress + 0x2960, &localPlayerPtr);
+	if (!NT_SUCCESS(status)) {
+		DbgPrintEx(0, 0, "Failed to read local player pointer (Status: 0x%X)\n", status);
+		ObDereferenceObject(targetProcess);
+		return status;
+	}
+	// far entity list
+	uintptr_t entityListBase = worldPointerValue + 0x1090;
+	uintptr_t entityListPointerValue = 0;
+	status = ReadPointer(targetProcess, entityListBase, &entityListPointerValue);
+	if (!NT_SUCCESS(status)) {
+		DbgPrintEx(0, 0, "Failed to read entity list base\n");
+		ObDereferenceObject(targetProcess);
+		return status;
+
+	}
+	INT32 entityCount = 0;
+	status = ReadMemory(targetProcess, worldPointerValue + 0x1098, &entityCount, sizeof(entityCount));
+	if (!NT_SUCCESS(status)) {
+		DbgPrintEx(0, 0, "Failed to read entity count (Status: 0x%X)\n", status);
+		ObDereferenceObject(targetProcess);
+		return status;
+	}
+
+	for (size_t i = 0; i < entityCount; i++) {
+		uintptr_t entityEntryAddress = entityListPointerValue + i * sizeof(uintptr_t);
+		uintptr_t entityPtr = 0;
+		status = ReadPointer(targetProcess, entityEntryAddress, &entityPtr);
+		if (!NT_SUCCESS(status) || entityPtr == 0) {
+			continue;
+		}
+
+		// see if its a zombie
+		// variable to distuingish if client wants zombies rendered
+
+		uintptr_t visualStateAddress = entityPtr + 0x1D0;
+		uintptr_t visualStatePtr = 0;
+		status = ReadPointer(targetProcess, visualStateAddress, &visualStatePtr);
+		if (!NT_SUCCESS(status) || visualStatePtr == 0) {
+			continue;
+		}
+		LARGE_INTEGER interval;
+		interval.QuadPart = -10000 * 100; // Time in 100ns units, negative value indicates sleep
+		KeDelayExecutionThread(KernelMode, FALSE, &interval);
+		// Read cords into regular vector 3 LONG struct aswell
+		VECTOR3 rawCords;
+		status = ReadMemory(targetProcess, visualStatePtr + 0x2C, &rawCords, sizeof(rawCords));
+		if (NT_SUCCESS(status)) {
+			DbgPrintEx(0, 0, "Raw Cords (LONGS): X=%ld, Y=%ld, Z=%ld\n", rawCords.x, rawCords.y, rawCords.z);
+		}
+
+		//ULONG VERSION
+		VECTOR3_RAW rawCoords;
+		status = ReadMemory(targetProcess, visualStatePtr + 0x2C, &rawCoords, sizeof(rawCoords));
+
+		if (NT_SUCCESS(status)) {
+			DbgPrintEx(0, 0, "Raw Coords (Read as ULONGs): X=%lu, Y=%lu, Z=%lu\n",
+				rawCoords.x, rawCoords.y, rawCoords.z);
+		}
+		//NTSTATUS WriteSharedStructInfo(HANDLE targetPid, PVOID userStructAddress, LONG xd, LONG xy, LONG xz, ULONG64 entityPointer, ULONG64 localPlayerPtr, LONG invertedx, LONG invertedy, LONG invertedz, LONG invertedviewrightx, LONG invertedviewrighty, LONG invertedviewrightz, LONG invertedviewforwardx, LONG invertedviewforwardy, LONG invertedviewforwardz, LONG viewportsizex, LONG viewportsizey, LONG viewportsizez, LONG projectiond1x, LONG projectiond1y, LONG projectiond1z, LONG projectiond2x, LONG projectiond2y, LONG projectiond2z) 
+		WriteSharedStructRadarInformation((HANDLE)gPID, (PVOID)gBaseAddr, rawCoords.x, rawCoords.y, rawCoords.z, entityPtr, localPlayerPtr);
+	}
+	ObDereferenceObject(targetProcess);
+	return STATUS_SUCCESS;
+}
+
+NTSTATUS sendEspInformation() {
 	PEPROCESS targetProcess;        //(uintptr_t)gBaseAddrDayZ
 	DbgPrintEx(0, 0, "%llx", (uintptr_t)gBaseAddrDayZ); 
 	uintptr_t worldPointerAddress = (uintptr_t)gBaseAddrDayZ + world; // Game base address + world offset - here
@@ -289,127 +414,122 @@ NTSTATUS sendInformation() {
 		DbgPrintEx(0, 0, "Failed to read entity list base\n");
 		ObDereferenceObject(targetProcess);
 		return status;
+
 	}
 
+
+	///////////////////////////////////////////////////////////////////////////////////////////////////
+	VECTOR3 invViewTranslation;
+	status = ReadMemory(targetProcess, cameraPtr + 0x2C, &invViewTranslation, sizeof(VECTOR3));
+	if (!NT_SUCCESS(status)) {
+		DbgPrintEx(0, 0, "Failed to read inverted view translation (Status: 0x%X)\n", status);
+		ObDereferenceObject(targetProcess);
+
+		return status;
+	}
+
+	VECTOR3 invViewRight;
+	status = ReadMemory(targetProcess, cameraPtr + 0x8, &invViewRight, sizeof(VECTOR3));
+	if (!NT_SUCCESS(status)) {
+		DbgPrintEx(0, 0, "Failed to read inverted view right (Status: 0x%X)\n", status);
+		ObDereferenceObject(targetProcess);
+
+		return status;
+	}
+
+	VECTOR3 invViewUp;
+	status = ReadMemory(targetProcess, cameraPtr + 0x14, &invViewUp, sizeof(VECTOR3));
+	if (!NT_SUCCESS(status)) {
+		DbgPrintEx(0, 0, "Failed to read inverted view up (Status: 0x%X)\n", status);
+		ObDereferenceObject(targetProcess);
+
+		return status;
+	}
+
+	// inv view forward
+	VECTOR3 invViewForward;
+	status = ReadMemory(targetProcess, cameraPtr + 0x58, &invViewForward, sizeof(VECTOR3));
+	if (!NT_SUCCESS(status)) {
+		DbgPrintEx(0, 0, "Failed to read inverted view forward (Status: 0x%X)\n", status);
+		ObDereferenceObject(targetProcess);
+
+		return status;
+	}
+
+	// inv view forward
+	VECTOR3 viewPortSize;
+	status = ReadMemory(targetProcess, cameraPtr + 0x20, &viewPortSize, sizeof(VECTOR3));
+	if (!NT_SUCCESS(status)) {
+		DbgPrintEx(0, 0, "Failed to read view port size (Status: 0x%X)\n", status);
+		ObDereferenceObject(targetProcess);
+
+		return status;
+	}
+
+	VECTOR3 projectionD1;
+	status = ReadMemory(targetProcess, cameraPtr + 0xD0, &projectionD1, sizeof(VECTOR3));
+	if (!NT_SUCCESS(status)) {
+		DbgPrintEx(0, 0, "Failed to read projection D1 (Status: 0x%X)\n", status);
+		ObDereferenceObject(targetProcess);
+
+		return status;
+	}
+
+	VECTOR3 projectionD2;
+	status = ReadMemory(targetProcess, cameraPtr + 0xDC, &projectionD2, sizeof(VECTOR3));
+	if (!NT_SUCCESS(status)) {
+		DbgPrintEx(0, 0, "Failed to read projection D2 (Status: 0x%X)\n", status);
+		ObDereferenceObject(targetProcess);
+
+		return status;
+	}
 	INT32 entityCount = 0;
-	DbgPrintEx(0, 0, "Entering information send loop");
+	/////////////////////////////////////////////////////////////////////////////////////////////////////
+	// just read into entityCount each time
+	status = ReadMemory(targetProcess, worldPointerValue + 0x1098, &entityCount, sizeof(entityCount));
+	if (!NT_SUCCESS(status)) {
+		DbgPrintEx(0, 0, "Failed to read entity count (Status: 0x%X)\n", status);
+		ObDereferenceObject(targetProcess);
+		return status;
+	}
 
-	// needs to be fixed to be variable and grab entity count dynamically
-	while (true) {
-		///////////////////////////////////////////////////////////////////////////////////////////////////
-		VECTOR3 invViewTranslation;
-		status = ReadMemory(targetProcess, cameraPtr + 0x2C, &invViewTranslation, sizeof(VECTOR3));
-		if (!NT_SUCCESS(status)) {
-			DbgPrintEx(0, 0, "Failed to read inverted view translation (Status: 0x%X)\n", status);
-			ObDereferenceObject(targetProcess);
-
-			return status;
+	for (size_t i = 0; i < entityCount; i++) {
+		uintptr_t entityEntryAddress = entityListPointerValue + i * sizeof(uintptr_t);
+		uintptr_t entityPtr = 0;
+		status = ReadPointer(targetProcess, entityEntryAddress, &entityPtr);
+		if (!NT_SUCCESS(status) || entityPtr == 0) {
+			continue;
 		}
 
-		VECTOR3 invViewRight;
-		status = ReadMemory(targetProcess, cameraPtr + 0x8, &invViewRight, sizeof(VECTOR3));
-		if (!NT_SUCCESS(status)) {
-			DbgPrintEx(0, 0, "Failed to read inverted view right (Status: 0x%X)\n", status);
-			ObDereferenceObject(targetProcess);
+		// see if its a zombie
+		// variable to distuingish if client wants zombies rendered
 
-			return status;
+		uintptr_t visualStateAddress = entityPtr + 0x1D0;
+		uintptr_t visualStatePtr = 0;
+		status = ReadPointer(targetProcess, visualStateAddress, &visualStatePtr);
+		if (!NT_SUCCESS(status) || visualStatePtr == 0) {
+			continue;
+		}
+		LARGE_INTEGER interval;
+		interval.QuadPart = -10000 * 100; // Time in 100ns units, negative value indicates sleep
+		KeDelayExecutionThread(KernelMode, FALSE, &interval);
+		// Read cords into regular vector 3 LONG struct aswell
+		VECTOR3 rawCords;
+		status = ReadMemory(targetProcess, visualStatePtr + 0x2C, &rawCords, sizeof(rawCords));
+		if (NT_SUCCESS(status)) {
+			DbgPrintEx(0, 0, "Raw Cords (LONGS): X=%ld, Y=%ld, Z=%ld\n", rawCords.x, rawCords.y, rawCords.z);
 		}
 
-		VECTOR3 invViewUp;
-		status = ReadMemory(targetProcess, cameraPtr + 0x14, &invViewUp, sizeof(VECTOR3));
-		if (!NT_SUCCESS(status)) {
-			DbgPrintEx(0, 0, "Failed to read inverted view up (Status: 0x%X)\n", status);
-			ObDereferenceObject(targetProcess);
+		//ULONG VERSION
+		VECTOR3_RAW rawCoords;
+		status = ReadMemory(targetProcess, visualStatePtr + 0x2C, &rawCoords, sizeof(rawCoords));
 
-			return status;
+		if (NT_SUCCESS(status)) {
+			DbgPrintEx(0, 0, "Raw Coords (Read as ULONGs): X=%lu, Y=%lu, Z=%lu\n",
+				rawCoords.x, rawCoords.y, rawCoords.z);
 		}
-
-		// inv view forward
-		VECTOR3 invViewForward;
-		status = ReadMemory(targetProcess, cameraPtr + 0x58, &invViewForward, sizeof(VECTOR3));
-		if (!NT_SUCCESS(status)) {
-			DbgPrintEx(0, 0, "Failed to read inverted view forward (Status: 0x%X)\n", status);
-			ObDereferenceObject(targetProcess);
-
-			return status;
-		}
-
-		// inv view forward
-		VECTOR3 viewPortSize;
-		status = ReadMemory(targetProcess, cameraPtr + 0x20, &viewPortSize, sizeof(VECTOR3));
-		if (!NT_SUCCESS(status)) {
-			DbgPrintEx(0, 0, "Failed to read view port size (Status: 0x%X)\n", status);
-			ObDereferenceObject(targetProcess);
-
-			return status;
-		}
-
-		VECTOR3 projectionD1;
-		status = ReadMemory(targetProcess, cameraPtr + 0xD0, &projectionD1, sizeof(VECTOR3));
-		if (!NT_SUCCESS(status)) {
-			DbgPrintEx(0, 0, "Failed to read projection D1 (Status: 0x%X)\n", status);
-			ObDereferenceObject(targetProcess);
-
-			return status;
-		}
-
-		VECTOR3 projectionD2;
-		status = ReadMemory(targetProcess, cameraPtr + 0xDC, &projectionD2, sizeof(VECTOR3));
-		if (!NT_SUCCESS(status)) {
-			DbgPrintEx(0, 0, "Failed to read projection D2 (Status: 0x%X)\n", status);
-			ObDereferenceObject(targetProcess);
-			
-			return status;
-		}
-
-		/////////////////////////////////////////////////////////////////////////////////////////////////////
-		// just read into entityCount each time
-		status = ReadMemory(targetProcess, worldPointerValue + 0x1098, &entityCount, sizeof(entityCount));
-		if (!NT_SUCCESS(status)) {
-			DbgPrintEx(0, 0, "Failed to read entity count (Status: 0x%X)\n", status);
-			ObDereferenceObject(targetProcess);
-			return status;
-		}
-
-		for (size_t i = 0; i < entityCount; i++) {
-			uintptr_t entityEntryAddress = entityListPointerValue + i * sizeof(uintptr_t);
-			uintptr_t entityPtr = 0;
-			status = ReadPointer(targetProcess, entityEntryAddress, &entityPtr);
-			if (!NT_SUCCESS(status) || entityPtr == 0) {
-				continue;
-			}
-
-			// see if its a zombie
-			// variable to distuingish if client wants zombies rendered
-
-			uintptr_t visualStateAddress = entityPtr + 0x1D0;
-			uintptr_t visualStatePtr = 0;
-			status = ReadPointer(targetProcess, visualStateAddress, &visualStatePtr);
-			if (!NT_SUCCESS(status) || visualStatePtr == 0) {
-				continue;
-			}
-			LARGE_INTEGER interval;
-			interval.QuadPart = -10000 * 100; // Time in 100ns units, negative value indicates sleep
-			KeDelayExecutionThread(KernelMode, FALSE, &interval);
-			// Read cords into regular vector 3 LONG struct aswell
-			VECTOR3 rawCords;
-			status = ReadMemory(targetProcess, visualStatePtr + 0x2C, &rawCords, sizeof(rawCords));
-			if (NT_SUCCESS(status)) {
-				DbgPrintEx(0, 0, "Raw Cords (LONGS): X=%ld, Y=%ld, Z=%ld\n", rawCords.x, rawCords.y, rawCords.z);
-			}
-
-			//ULONG VERSION
-			VECTOR3_RAW rawCoords;
-			status = ReadMemory(targetProcess, visualStatePtr + 0x2C, &rawCoords, sizeof(rawCoords));
-
-			if (NT_SUCCESS(status)) {
-				DbgPrintEx(0, 0, "Raw Coords (Read as ULONGs): X=%lu, Y=%lu, Z=%lu\n",
-					rawCoords.x, rawCoords.y, rawCoords.z);
-			}
-			//NTSTATUS WriteSharedStructInfo(HANDLE targetPid, PVOID userStructAddress, LONG xd, LONG xy, LONG xz, ULONG64 entityPointer, ULONG64 localPlayerPtr, LONG invertedx, LONG invertedy, LONG invertedz, LONG invertedviewrightx, LONG invertedviewrighty, LONG invertedviewrightz, LONG invertedviewforwardx, LONG invertedviewforwardy, LONG invertedviewforwardz, LONG viewportsizex, LONG viewportsizey, LONG viewportsizez, LONG projectiond1x, LONG projectiond1y, LONG projectiond1z, LONG projectiond2x, LONG projectiond2y, LONG projectiond2z) 
-			WriteSharedStructInfo((HANDLE)gPID, (PVOID)gBaseAddr, rawCoords.x, rawCoords.y, rawCoords.z, entityPtr, localPlayerPtr, invViewTranslation.x, invViewTranslation.y, invViewTranslation.z, invViewRight.x, invViewRight.y, invViewRight.z, invViewUp.x, invViewUp.y, invViewUp.z, invViewForward.x, invViewForward.y, invViewForward.z, viewPortSize.x, viewPortSize.y, viewPortSize.z, projectionD1.x, projectionD1.y, projectionD1.z, projectionD2.x, projectionD2.y, projectionD2.z); // cords of the shared struct and the PID of the usermode application (minimap.exe)
-		}
-		
+		//NTSTATUS WriteSharedStructInfo(HANDLE targetPid, PVOID userStructAddress, LONG xd, LONG xy, LONG xz, ULONG64 entityPointer, ULONG64 localPlayerPtr, LONG invertedx, LONG invertedy, LONG invertedz, LONG invertedviewrightx, LONG invertedviewrighty, LONG invertedviewrightz, LONG invertedviewforwardx, LONG invertedviewforwardy, LONG invertedviewforwardz, LONG viewportsizex, LONG viewportsizey, LONG viewportsizez, LONG projectiond1x, LONG projectiond1y, LONG projectiond1z, LONG projectiond2x, LONG projectiond2y, LONG projectiond2z) 
+		WriteSharedStructEspInformation((HANDLE)gPID, (PVOID)gBaseAddr, rawCoords.x, rawCoords.y, rawCoords.z, entityPtr, localPlayerPtr, invViewTranslation.x, invViewTranslation.y, invViewTranslation.z, invViewRight.x, invViewRight.y, invViewRight.z, invViewUp.x, invViewUp.y, invViewUp.z, invViewForward.x, invViewForward.y, invViewForward.z, viewPortSize.x, viewPortSize.y, viewPortSize.z, projectionD1.x, projectionD1.y, projectionD1.z, projectionD2.x, projectionD2.y, projectionD2.z); // cords of the shared struct and the PID of the usermode applicat
 	}
 	ObDereferenceObject(targetProcess);
 	return STATUS_SUCCESS;
@@ -700,16 +820,32 @@ NTSTATUS ReadStructFromProcess() {
 				// ************************************* RETRIEVE GLOBAL BASE ADDRESS VALUES HERE, FROM FILE OR STRUCT 
 				ReadFromTextFile2(); // gets dayz base address
 				GetProcessImageBaseAddress((HANDLE)gPIDDayZ, &gBaseAddrDayZ);
-				status = noGrass();
-				status = sendInformation(); // gets radar
-				break; // Ensure this loop exits
+				//status = noGrass();
+				//status = sendInformation(); // gets radar
+				//break; // Ensure this loop exits
 			}
-			else if (structData.y == 0) {
+			if (structData.y == 0) {
 				LARGE_INTEGER interval;
 				interval.QuadPart = -10000 * 10000; // Time in 100ns units, negative value indicates sleep
 				KeDelayExecutionThread(KernelMode, FALSE, &interval);
 				DbgPrintEx(0, 0, "Game not started yet");
+				continue;
 			}
+
+			if (structData.option == 10) {
+				status = noGrass();
+			}
+
+			if (structData.option == 11) {
+				status = sendEspInformation(); 
+			}
+			if (structData.option == 12) {
+				status = sendRadarInformation();
+			}
+			/*
+			if (structData.option == 13) {
+				status = fullBright();
+			}*/
 		}// without battle-eye: run um process -> write its shit into logging file -> launch dayz -> get its base addr and process -> change that in the driver -> map driver with UM process open -> um process maps entities
 
 	// um just needs to start, write its info to file, load dayz, gt its info into file, set status to 1, render cords

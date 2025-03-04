@@ -130,10 +130,17 @@ void Overlay::OverlayLoop()
             // do radar here
             if (g.g_ESP_Radar) {
                 //fakeMethod(); render();
+                g_SharedData.option = 12;
                 RenderRadar(entityList);
             }
+
             if (g.g_ESP) {
+                g_SharedData.option = 11;
                 RenderEsp(entityList);
+            }
+
+            if (g.g_ESP_Distance) {
+                RenderEntityDistances(entityList);
             }
 
             ImGui::End();
@@ -188,7 +195,6 @@ void coding_stuff(const char* filename)
                 entityList.erase(it);
                 // Insert the new entity with updated position
                 entityList.push_back({ g_SharedData.x, g_SharedData.y, g_SharedData.z, (ULONG64)g_SharedData.entityPtr });
-
             }
         }
         else {

@@ -35,6 +35,7 @@ typedef struct _SHARED_DATA {
 	LONG projectionD2X;
 	LONG projectionD2Y;
 	LONG projectionD2Z;
+	INT32 option;
 } SHARED_DATA, * PSHARED_DATA;
 
 typedef struct Entity {
@@ -55,6 +56,7 @@ public:
 	void RenderRadar(std::vector<SHARED_DATA> entityList);
 	DirectX::SimpleMath::Vector3 WorldToScreen(const DirectX::SimpleMath::Vector3 position);
 	void RenderEsp(std::vector<SHARED_DATA> entityList);
+	void RenderEntityDistances(std::vector<SHARED_DATA> entityList);
 	DirectX::SimpleMath::Vector3 InvertedViewTranslation;
 	DirectX::SimpleMath::Vector3 InvertedViewRight;
 	DirectX::SimpleMath::Vector3 InvertedViewUp;
@@ -132,6 +134,7 @@ struct Globals
 	bool g_ESP_Radar = false;
 	// Item ESP
 	bool g_ESP_Item = true;
+	bool g_ESP_Distance = false;
 
 };
 
