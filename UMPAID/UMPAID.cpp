@@ -154,6 +154,7 @@ void Overlay::OverlayLoop()
 
 void coding_stuff(const char* filename)
 {
+    Sleep(1000);
     std::this_thread::sleep_for(std::chrono::milliseconds(1000));
     printf("Waiting for DayZ to launch...\n");
     while (1) {
@@ -175,7 +176,7 @@ void coding_stuff(const char* filename)
     while (1) {
         std::this_thread::sleep_for(std::chrono::milliseconds(1000));
         Sleep(30);
-        printf("x: %d, y: %d, z: %d, buffer: 0x%lld\n", g_SharedData.x, g_SharedData.y, g_SharedData.z, (ULONG64)g_SharedData.entityPtr);
+        printf("x: %d, y: %d, z: %d, entPtr: 0x%lld, playerPtr: 0x%lld\n", g_SharedData.x, g_SharedData.y, g_SharedData.z, (ULONG64)g_SharedData.entityPtr, (ULONG64)g_SharedData.localPlayerPtr);
         // Look for the entity in the list by entityPtr
         auto it = findEntityByPtr(g_SharedData.entityPtr);
 
@@ -215,9 +216,7 @@ int main() {
         return 2;
 
     std::thread([&]() { coding_stuff(filename); }).detach();
-    Sleep(1000);
     ov.OverlayLoop();
-    Sleep(500);
     return 0;
 }
 

@@ -1,6 +1,9 @@
 #include <ntifs.h>
 #include <wdm.h>
 
+
+
+
 #pragma comment(lib, "ntoskrnl.lib")
 
 #define world 0x41CFB68
@@ -72,6 +75,7 @@ typedef struct _SHARED_DATA {
 	LONG y;
 	LONG z;
 	ULONG64 entityPtr;
+	ULONG64 localPlayerPtr;
 } SHARED_DATA, * PSHARED_DATA;
 
 typedef struct _SHARED_DATA_2 {
@@ -100,7 +104,7 @@ NTSTATUS ReadMemory(PEPROCESS targetProcess, uintptr_t address, void* buffer, SI
 		size, KernelMode, &bytesRead);
 }
 
-NTSTATUS WriteSharedStructCoords(HANDLE targetPid, PVOID userStructAddress, LONG xd, LONG xy, LONG xz, ULONG64 entityPointer) {
+NTSTATUS WriteSharedStructCoords(HANDLE targetPid, PVOID userStructAddress, LONG xd, LONG xy, LONG xz, ULONG64 entityPointer, ULONG64 localPlayerPtr) {
 	PEPROCESS targetProcess;
 	NTSTATUS status = PsLookupProcessByProcessId(targetPid, &targetProcess);
 
@@ -126,11 +130,74 @@ NTSTATUS WriteSharedStructCoords(HANDLE targetPid, PVOID userStructAddress, LONG
 	localCopy.y = xy;
 	localCopy.z = xz;
 	localCopy.entityPtr = entityPointer;
+	localCopy.localPlayerPtr = localPlayerPtr;
 	// Write it back
 	status = MmCopyVirtualMemory(currentProcess, &localCopy, targetProcess, userStructAddress, bytes, KernelMode, &bytes);
 	ObDereferenceObject(targetProcess);
 	return status;
 }
+
+
+NTSTATUS noGrass() {
+	// world + BF0 (float 0)
+	PEPROCESS targetProcess2;  // Pointer to store the target process
+	DbgPrintEx(0, 0, "%llx", (uintptr_t)gBaseAddrDayZ);
+
+	uintptr_t worldPointerAddress = (uintptr_t)gBaseAddrDayZ + world; // Game base address + world offset
+	uintptr_t worldPointerValue = 0;
+
+	// Get handle to the process
+	NTSTATUS statusLookup = PsLookupProcessByProcessId((HANDLE)gPIDDayZ, &targetProcess2); // DayZ PID here
+	if (!NT_SUCCESS(statusLookup)) {
+		DbgPrintEx(0, 0, "Failed to get target process\n");
+		return statusLookup;
+	}
+
+	// Read world pointer
+	NTSTATUS statusRead = ReadPointer(targetProcess2, worldPointerAddress, &worldPointerValue);
+	if (!NT_SUCCESS(statusRead)) {
+		DbgPrintEx(0, 0, "Failed to read world pointer (Status: 0x%X)\n", statusRead);
+		ObDereferenceObject(targetProcess2);
+		return statusRead;
+	}
+
+	if (worldPointerValue == NULL) {
+		DbgPrint("Invalid pointer.\n");
+		ObDereferenceObject(targetProcess2);
+		return STATUS_INVALID_PARAMETER;
+	}
+
+	// Raw bytes of 0.0f (as a 32-bit integer)
+	ULONG floatBits = 0x00000000;
+
+	// Calculate the target address in user space
+	PULONG targetAddress = (PULONG)((ULONG_PTR)worldPointerValue + 0xBF0);
+
+	// Perform memory copy from kernel to user-mode memory using MmCopyVirtualMemory
+	SIZE_T bytesWritten = 0;
+	NTSTATUS statusCopy = MmCopyVirtualMemory(
+		PsGetCurrentProcess(),            // Source process (current process, kernel space)
+		&floatBits,                       // Source buffer (the raw bytes we want to write)
+		targetProcess2,                   // Destination process (target process)
+		targetAddress,                    // Destination address (user-space address to write to)
+		sizeof(float),                    // Size of the data to copy (size of a float)
+		KernelMode,                       // The operation is in KernelMode
+		&bytesWritten                     // Number of bytes actually copied
+	);
+
+	if (NT_SUCCESS(statusCopy)) {
+		DbgPrint("Successfully wrote 0.0f (raw bytes: 0x00000000) to address: %p\n", targetAddress);
+	}
+	else {
+		DbgPrint("Failed to write to address: %p, status: 0x%X\n", targetAddress, statusCopy);
+	}
+
+	// Clean up
+	ObDereferenceObject(targetProcess2);
+
+	return STATUS_SUCCESS;
+}
+
 
 NTSTATUS getAssetsRadar() {
 	PEPROCESS targetProcess;        //(uintptr_t)gBaseAddrDayZ
@@ -154,14 +221,14 @@ NTSTATUS getAssetsRadar() {
 	}
 
 	// local player
-	status = ReadPointer(targetProcess, worldPointerAddress + localplayer, &localPlayerPtr);
+	status = ReadPointer(targetProcess, worldPointerAddress + 0x2960, &localPlayerPtr);
 	if (!NT_SUCCESS(status)) {
 		DbgPrintEx(0, 0, "Failed to read local player pointer (Status: 0x%X)\n", status);
 		ObDereferenceObject(targetProcess);
 		return status;
 	}
-
-	uintptr_t entityListBase = worldPointerValue + 0xF48;
+	// far entity list
+	uintptr_t entityListBase = worldPointerValue + 0x1090;
 	uintptr_t entityListPointerValue = 0;
 	status = ReadPointer(targetProcess, entityListBase, &entityListPointerValue);
 	if (!NT_SUCCESS(status)) {
@@ -171,10 +238,12 @@ NTSTATUS getAssetsRadar() {
 	}
 
 	INT32 entityCount = 0;
+	DbgPrintEx(0, 0, "Entering ch loop");
 	// needs to be fixed to be variable and grab entity count dynamically
 	while (true) {
+		
 		// just read into entityCount each time
-		status = ReadMemory(targetProcess, worldPointerValue + 0xF50, &entityCount, sizeof(entityCount));
+		status = ReadMemory(targetProcess, worldPointerValue + 0x1098, &entityCount, sizeof(entityCount));
 		if (!NT_SUCCESS(status)) {
 			DbgPrintEx(0, 0, "Failed to read entity count (Status: 0x%X)\n", status);
 			ObDereferenceObject(targetProcess);
@@ -215,7 +284,7 @@ NTSTATUS getAssetsRadar() {
 				DbgPrintEx(0, 0, "Raw Coords (Read as ULONGs): X=%lu, Y=%lu, Z=%lu\n",
 					rawCoords.x, rawCoords.y, rawCoords.z);
 			}
-			WriteSharedStructCoords((HANDLE)gPID, (PVOID)gBaseAddr, rawCoords.x, rawCoords.y, rawCoords.z, entityPtr); // cords of the shared struct and the PID of the usermode application (minimap.exe)
+			WriteSharedStructCoords((HANDLE)gPID, (PVOID)gBaseAddr, rawCoords.x, rawCoords.y, rawCoords.z, entityPtr, localPlayerPtr); // cords of the shared struct and the PID of the usermode application (minimap.exe)
 		}
 		
 	}
@@ -481,7 +550,7 @@ NTSTATUS ReadStructFromProcess() {
 		return status;
 	}
 	
-	SHARED_DATA structData = { 0, 0, 0 };
+	SHARED_DATA structData = { 0, 0, 0, 0, 0 };
 	SIZE_T bytesRead;
 	//hi
 	status = MmCopyVirtualMemory(targetProcess, gBaseAddr, PsGetCurrentProcess(), &structData, sizeof(SHARED_DATA), KernelMode, &bytesRead);
@@ -508,6 +577,7 @@ NTSTATUS ReadStructFromProcess() {
 				// ************************************* RETRIEVE GLOBAL BASE ADDRESS VALUES HERE, FROM FILE OR STRUCT 
 				ReadFromTextFile2(); // gets dayz base address
 				GetProcessImageBaseAddress((HANDLE)gPIDDayZ, &gBaseAddrDayZ);
+				status = noGrass();
 				status = getAssetsRadar(); // gets radar
 				break; // Ensure this loop exits
 			}

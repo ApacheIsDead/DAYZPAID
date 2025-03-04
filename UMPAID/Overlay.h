@@ -11,6 +11,7 @@ typedef struct _SHARED_DATA {
 	LONG y;
 	LONG z;
 	ULONG64 entityPtr;
+	ULONG64 localPlayerPtr;
 } SHARED_DATA, * PSHARED_DATA;
 
 typedef struct Entity {

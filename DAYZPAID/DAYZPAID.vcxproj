@@ -92,6 +92,8 @@
     <ClCompile>
       <LanguageStandard_C>stdc17</LanguageStandard_C>
       <ControlFlowGuard>false</ControlFlowGuard>
+      <FloatingPointModel>Strict</FloatingPointModel>
+      <FloatingPointExceptions>false</FloatingPointExceptions>
     </ClCompile>
     <Link>
       <EntryPointSymbol>DriverEntryCustom</EntryPointSymbol>
